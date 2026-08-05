@@ -2,11 +2,16 @@
 
 ## State at handoff
 
-The foundational research and proposal are complete. Git was initialized and
-the documentation baseline was committed as `c068bb2` before implementation.
-No application scaffold or product code existed at that baseline. D001 and
-D011 record accepted owner direction; later accepted entries record architecture
-gates deliberately locked during implementation.
+The foundational research, architecture gate, and application scaffold are
+complete. The current implementation has CodeMirror editing, last-known-good
+SVG rendering in a script-disabled sandbox, explicit parse/capability evidence,
+and coherent CSS/SMIL play, pause, restart, and live time. The hostile-input and
+animation contracts run in Chromium, Firefox, and WebKit. Source/preview
+selection, seeking, variables, and files/recovery are the next active slices.
+
+The documentation baseline is `c068bb2`; the static scaffold is `86ebd67`.
+D001 and D011 record accepted owner direction; later accepted entries record
+architecture gates deliberately locked during implementation.
 
 Final owner direction:
 

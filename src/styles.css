@@ -118,11 +118,25 @@ button {
 }
 
 .status {
-  color: var(--accent);
+  color: var(--muted);
 }
 
 .status-muted {
   color: var(--muted);
+}
+
+.status-error {
+  color: var(--accent);
+}
+
+.playback-time {
+  min-width: 58px;
+  padding-inline: 8px;
+  color: var(--muted);
+  font-family: "Geist Mono Variable", "Geist Mono", monospace;
+  font-size: 11px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 
 .rail-separator {
@@ -157,7 +171,7 @@ button {
   letter-spacing: 0.015em;
 }
 
-.pane-header h1 {
+.pane-header h2 {
   margin: 0;
   color: var(--ink);
   font-size: inherit;
@@ -171,6 +185,8 @@ button {
 }
 
 .preview-stage {
+  position: relative;
+  min-width: 0;
   min-height: 0;
   background-color: #11110f;
   background-image:
@@ -184,6 +200,57 @@ button {
     8px -8px,
     -8px 0;
   background-size: 16px 16px;
+}
+
+.editor-host,
+.editor-host > .cm-editor,
+.preview-wrap,
+.preview-stage,
+.preview-frame {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
+.editor-host {
+  overflow: hidden;
+}
+
+.preview-wrap {
+  position: relative;
+  min-width: 0;
+}
+
+.preview-frame {
+  display: block;
+  border: 0;
+  background: transparent;
+}
+
+.diagnostic {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  left: 12px;
+  display: grid;
+  gap: 3px;
+  padding: 9px 11px;
+  border-left: 2px solid var(--accent);
+  color: var(--muted);
+  background: rgb(14 14 13 / 92%);
+  font-family: "Geist Mono Variable", "Geist Mono", monospace;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.diagnostic[hidden] {
+  display: none;
+}
+
+.diagnostic strong {
+  color: var(--ink);
+  font-family: "Geist Variable", "Geist", sans-serif;
+  font-weight: 520;
 }
 
 .empty-state {
@@ -257,8 +324,7 @@ button {
     border-bottom: 1px solid var(--rule);
   }
 
-  .rail-actions button:nth-child(2),
-  .rail-actions button:nth-child(3),
+  .file-action,
   .rail-separator,
   .rail-note {
     display: none;

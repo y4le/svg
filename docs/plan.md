@@ -10,6 +10,24 @@ variables can be tuned through exact source-preserving controls.
 The active plan ends with the code-forward workbench. GodSVG-class visual-first
 editing is a separate possible extension in `docs/visual-editing-extension.md`.
 
+## Implementation checkpoint — 2026-08-04
+
+The first vertical slice is implemented and browser-verified:
+
+- Vite/TypeScript and CodeMirror XML editing in the warm split workbench;
+- debounced validation with explicit namespace/DOCTYPE/XML diagnostics and a
+  last-known-good preview during invalid edits;
+- validated DOM import into a fixed sandbox/CSP shell, plus pre-insertion
+  neutralization of scripts, handlers, navigation, and remote references;
+- native CSS and SMIL detection, play/pause/restart, reduced-motion startup,
+  a live clock readout, and clock continuity across ordinary source edits;
+- Chromium, Firefox, and WebKit contracts for geometry APIs, animation,
+  invalid-source retention, and hostile input.
+
+Checks: `npm run validate` and `npm run test:browser`. This checkpoint does not
+claim Phase 0 or the MVP complete: source/preview selection, shared seeking,
+files/recovery, and variable transactions remain the next product slices.
+
 ## Non-goals
 
 - A general vector drawing program; that possibility has a separate extension

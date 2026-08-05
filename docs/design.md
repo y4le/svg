@@ -335,7 +335,7 @@ while covering reusable colors, lengths, angles, times, opacity, and numbers.
 
 ```svg
 <svg style="--radius: 32px; --period: 1.8s; --ink: #c1432e">
-  <!-- @control --radius min=8 max=80 step=1 -->
+  <!-- @control radius min=8 max=80 step=1 -->
   <!-- ... var(--radius), var(--period), var(--ink) ... -->
 </svg>
 ```
@@ -354,7 +354,9 @@ declaration. A missing or mismatched directive produces a diagnostic and does
 not invent source.
 
 The canonical MVP representation is one directive per comment placed directly
-under the root `<svg>`: `@control <name> min=<n> max=<n> step=<n>`. An optional
+under the root `<svg>`: `@control <bare-name> min=<n> max=<n> step=<n>`. The
+bare name `radius` denotes the CSS custom property `--radius`, because XML
+comments may not contain a double hyphen. An optional
 `unit=<u>` only cross-checks the literal's own unit and never supplies it.
 Malformed directives or comments lost to optimization remove only the bounded
 slider; the exact value control and SVG behavior remain. Do not support a

@@ -254,7 +254,7 @@ Recommended v1 convention:
   style="--radius: 32px; --period: 1.8s; --ink: #c1432e"
   xmlns="http://www.w3.org/2000/svg"
 >
-  <!-- @control --radius min=8 max=80 step=1 unit=px -->
+  <!-- @control radius min=8 max=80 step=1 unit=px -->
   <style>
     .pulse { r: var(--radius); fill: var(--ink); animation: pulse var(--period) infinite; }
   </style>

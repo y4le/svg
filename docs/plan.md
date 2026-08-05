@@ -98,7 +98,8 @@ inconsistent, redesign around opaque origin before product work.
 - Render label, value, and unit; add one explicit bounded slider directive.
 - Parse one canonical root-child comment form and attempt to falsify it against
   exact source ranges, malformed directives, and a default SVGO pass:
-  `<!-- @control --radius min=8 max=80 step=1 -->`.
+  `<!-- @control radius min=8 max=80 step=1 -->` (the bare name refers to
+  `--radius`; XML comments cannot contain `--`).
 - Scrub a value while source and preview update.
 - Produce one undo step for a complete gesture and abort safely after a
   conflicting source edit.

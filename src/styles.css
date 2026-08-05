@@ -139,6 +139,11 @@ button {
   font-variant-numeric: tabular-nums;
 }
 
+.time-scrubber {
+  width: clamp(72px, 10vw, 140px);
+  accent-color: var(--accent);
+}
+
 .rail-separator {
   align-self: stretch;
   width: 1px;
@@ -271,6 +276,28 @@ button {
   font-weight: 520;
 }
 
+.recovery-notice {
+  position: fixed;
+  z-index: 20;
+  top: 52px;
+  left: 50%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: calc(100vw - 24px);
+  padding: 6px 8px 6px 11px;
+  border-left: 2px solid var(--accent);
+  color: var(--ink);
+  background: rgb(14 14 13 / 96%);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 24%);
+  font-size: 12px;
+  transform: translateX(-50%);
+}
+
+.recovery-notice[hidden] {
+  display: none;
+}
+
 .empty-state {
   display: grid;
   align-content: center;
@@ -297,6 +324,47 @@ button {
   min-width: 0;
   border-top: 1px solid var(--rule);
   color: var(--muted);
+}
+
+.variable-controls {
+  display: flex;
+  align-items: center;
+  align-self: stretch;
+  min-width: 0;
+  overflow-x: auto;
+  border-left: 1px solid var(--rule);
+}
+
+.variable-control {
+  display: flex;
+  align-items: center;
+  align-self: stretch;
+  gap: 7px;
+  padding-inline: 10px;
+  border-right: 1px solid var(--rule);
+  white-space: nowrap;
+}
+
+.variable-label {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.variable-value {
+  width: 70px;
+  padding: 3px 4px;
+  border: 0;
+  border-bottom: 1px solid var(--rule);
+  border-radius: 0;
+  color: var(--ink);
+  background: transparent;
+  font-family: "Geist Mono Variable", "Geist Mono", monospace;
+  font-size: 11px;
+}
+
+.variable-slider {
+  width: 76px;
+  accent-color: var(--accent);
 }
 
 .breadcrumb,
@@ -361,8 +429,17 @@ button {
 
   .file-action,
   .rail-separator,
-  .rail-note {
+  .rail-note,
+  .time-scrubber {
     display: none;
+  }
+
+  .instrument-rail {
+    overflow-x: auto;
+  }
+
+  .variable-controls {
+    flex: 0 0 auto;
   }
 }
 

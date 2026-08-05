@@ -1,5 +1,10 @@
-import { EditorSelection } from "@codemirror/state";
+import { EditorSelection, Transaction } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
+import {
+  applyEditIntent,
+  formatSteppedNumber,
+  replaceIntent,
+} from "../document/editIntent";
 import { sourceVersion } from "../document/source";
 import {
   alignPreviewElements,
@@ -14,12 +19,23 @@ import {
 } from "../document/validation";
 import { createEditor } from "../editor/createEditor";
 import { DEFAULT_SVG } from "../examples/default";
+import { FileEnvelope } from "../files/FileEnvelope";
+import {
+  clearRecovery,
+  loadRecovery,
+  saveRecovery,
+  type RecoveryRecord,
+} from "../files/recovery";
 import {
   PreviewSession,
   type AnimationFamily,
   type PlaybackState,
 } from "../preview/PreviewSession";
 import { h } from "../ui/dom";
+import {
+  discoverRootVariables,
+  type SourceVariable,
+} from "../variables/discover";
 
 const PREVIEW_DELAY = 140;
 
@@ -55,6 +71,17 @@ function familyLabel(family: AnimationFamily): string {
     : `${family.toUpperCase()} animation`;
 }
 
+interface VariableGesture {
+  readonly name: string;
+  readonly original: string;
+  readonly sliderOriginalValue: string;
+  readonly input: HTMLInputElement;
+  readonly pointerId: number;
+  from: number;
+  to: number;
+  final: string;
+}
+
 export class WorkbenchApp {
   readonly root: HTMLElement;
   readonly editor: EditorView;
@@ -82,6 +109,18 @@ export class WorkbenchApp {
   #inspector: HTMLDivElement;
   #selectionBox: HTMLDivElement;
   #breadcrumb: HTMLDivElement;
+  #controls: HTMLDivElement;
+  #scrubber: HTMLInputElement;
+  #gesture: VariableGesture | null = null;
+  #ignoredSlider: HTMLInputElement | null = null;
+  #ignoredSliderValue = "";
+  #applyingGesture = false;
+  #envelope = FileEnvelope.new("untitled.svg", DEFAULT_SVG);
+  #filename: HTMLSpanElement;
+  #sourceMeta: HTMLSpanElement;
+  #fileInput: HTMLInputElement;
+  #recoveryNotice: HTMLDivElement;
+  #recoveryTimer: number | undefined;
 
   constructor(mount: HTMLElement) {
     const editorHost = h("div", { className: "editor-host" });
@@ -99,6 +138,41 @@ export class WorkbenchApp {
       "data-testid": "selection-box",
     });
     this.#breadcrumb = h("div", { className: "breadcrumb" }, "no selection");
+    this.#filename = h("span", { className: "filename" }, "untitled.svg");
+    this.#sourceMeta = h("span", {
+      className: "pane-meta",
+      textContent: "XML · source of truth",
+    });
+    this.#fileInput = h("input", {
+      type: "file",
+      accept: ".svg,image/svg+xml",
+      hidden: true,
+      "aria-label": "Open SVG file",
+      onchange: (event) => void this.#openSelectedFile(event),
+    });
+    this.#recoveryNotice = h("div", {
+      className: "recovery-notice",
+      role: "status",
+      hidden: true,
+    });
+    this.#controls = h("div", {
+      className: "variable-controls",
+      "aria-label": "SVG variables",
+    });
+    this.#scrubber = h("input", {
+      className: "time-scrubber",
+      type: "range",
+      min: 0,
+      max: 10,
+      step: 0.01,
+      value: 0,
+      "aria-label": "Inspection time",
+      title: "Inspection horizon: 10 seconds",
+      oninput: (event) =>
+        this.preview.seek(
+          Number((event.currentTarget as HTMLInputElement).value),
+        ),
+    });
 
     this.#status = h("span", {
       className: "status",
@@ -151,7 +225,7 @@ export class WorkbenchApp {
           "div",
           { className: "file-state" },
           h("span", { className: "wordmark" }, "svg"),
-          h("span", { className: "filename" }, "untitled.svg"),
+          this.#filename,
           this.#status,
         ),
         h(
@@ -162,17 +236,26 @@ export class WorkbenchApp {
             "aria-label": "Playback and file actions",
           },
           this.#time,
+          this.#scrubber,
           this.#pauseButton,
           this.#restartButton,
           h("span", { className: "rail-separator", "aria-hidden": "true" }),
           h(
             "button",
-            { type: "button", className: "file-action", disabled: true },
+            {
+              type: "button",
+              className: "file-action",
+              onclick: () => this.#fileInput.click(),
+            },
             "open",
           ),
           h(
             "button",
-            { type: "button", className: "file-action", disabled: true },
+            {
+              type: "button",
+              className: "file-action",
+              onclick: () => this.#download(),
+            },
             "download",
           ),
         ),
@@ -187,7 +270,7 @@ export class WorkbenchApp {
             "header",
             { className: "pane-header" },
             h("h2", { id: "source-title" }, "source"),
-            h("span", { className: "pane-meta" }, "XML · source of truth"),
+            this.#sourceMeta,
           ),
           editorHost,
         ),
@@ -215,13 +298,11 @@ export class WorkbenchApp {
         "footer",
         { className: "instrument-rail" },
         this.#breadcrumb,
-        h(
-          "div",
-          { className: "rail-note" },
-          "variables appear from root CSS custom properties",
-        ),
+        this.#controls,
       ),
       this.#liveRegion,
+      this.#fileInput,
+      this.#recoveryNotice,
     );
 
     mount.replaceChildren(shell);
@@ -237,10 +318,12 @@ export class WorkbenchApp {
       onSelectionChange: (position) => this.#selectFromSource(position),
     });
     this.#validateAndPublish();
+    void this.#offerRecovery();
   }
 
   destroy(): void {
     window.clearTimeout(this.#previewTimer);
+    window.clearTimeout(this.#recoveryTimer);
     window.cancelAnimationFrame(this.#clockFrame ?? 0);
     this.editor.destroy();
     this.preview.destroy();
@@ -255,6 +338,12 @@ export class WorkbenchApp {
     this.#dirty = source !== this.#baselineSource;
     this.#status.textContent = this.#dirty ? "checking · changed" : "checking";
     this.#status.classList.remove("status-error");
+    if (this.#gesture && !this.#applyingGesture) {
+      this.#gesture = null;
+      this.#announce("Variable gesture stopped because the source changed.");
+    }
+    if (this.#applyingGesture) return;
+    this.#scheduleRecovery();
     window.clearTimeout(this.#previewTimer);
     this.#previewTimer = window.setTimeout(
       () => this.#validateAndPublish(),
@@ -276,6 +365,7 @@ export class WorkbenchApp {
       this.#showDiagnostic(formatDiagnostic(validation.diagnostic), warm);
       this.#pauseButton.disabled = !warm;
       this.#restartButton.disabled = !warm;
+      this.#renderVariables([], "controls unavailable while source is invalid");
       return;
     }
 
@@ -302,9 +392,11 @@ export class WorkbenchApp {
   async #publishValid(validation: ValidSvg, index: SourceIndex): Promise<void> {
     await this.preview.publish(validation);
     if (Number(index.version) !== this.#version) return;
+    this.preview.iframe.dataset.sourceVersion = String(index.version);
     this.#index = index;
     this.#alignPreview(index);
     this.#selectFromSource(this.editor.state.selection.main.head);
+    this.#renderVariables(discoverRootVariables(index, validation.document));
   }
 
   #showDiagnostic(message: string, warm: boolean): void {
@@ -340,6 +432,9 @@ export class WorkbenchApp {
       state.paused ? "Play animation" : "Pause animation",
     );
     this.#time.textContent = `${state.time.toFixed(2)}s`;
+    this.#scrubber.value = String(
+      Math.min(Number(this.#scrubber.max), state.time),
+    );
     this.#time.title = familyLabel(state.family);
     if (this.#lastValid && !this.#stale) {
       this.#previewMeta.textContent = `${familyLabel(state.family)} · ${disabledSummary(this.#lastValid)}`;
@@ -357,6 +452,9 @@ export class WorkbenchApp {
       }
       if (timestamp - this.#lastClockPaint > 80) {
         this.#time.textContent = `${this.preview.sampleTime().toFixed(2)}s`;
+        this.#scrubber.value = String(
+          Math.min(Number(this.#scrubber.max), this.preview.state.time),
+        );
         this.#updateSelectionBox();
         this.#lastClockPaint = timestamp;
       }
@@ -474,6 +572,375 @@ export class WorkbenchApp {
 
   #hideSelectionBox(): void {
     this.#selectionBox.hidden = true;
+  }
+
+  #renderVariables(
+    variables: readonly SourceVariable[],
+    emptyMessage = "no root variables",
+  ): void {
+    const activeLabel =
+      document.activeElement instanceof HTMLInputElement &&
+      this.#controls.contains(document.activeElement)
+        ? document.activeElement.getAttribute("aria-label")
+        : null;
+    if (!variables.length) {
+      this.#controls.replaceChildren(
+        h("span", { className: "rail-note" }, emptyMessage),
+      );
+      return;
+    }
+    this.#controls.replaceChildren(
+      ...variables.map((variable) => this.#variableControl(variable)),
+    );
+    if (activeLabel) {
+      const replacement = [...this.#controls.querySelectorAll("input")].find(
+        (input) => input.getAttribute("aria-label") === activeLabel,
+      );
+      replacement?.focus({ preventScroll: true });
+    }
+  }
+
+  #variableControl(variable: SourceVariable): HTMLElement {
+    const value = h("input", {
+      className: "variable-value",
+      type: "text",
+      value: variable.value,
+      spellcheck: false,
+      "aria-label": `${variable.label} value`,
+      title: `${variable.name} · ${variable.usageCount} use${variable.usageCount === 1 ? "" : "s"}`,
+      onchange: (event) => {
+        const input = event.currentTarget as HTMLInputElement;
+        this.#commitVariable(variable, input.value.trim(), input);
+      },
+    });
+    const children: Node[] = [
+      h("span", { className: "variable-label" }, variable.label),
+      value,
+    ];
+
+    if (variable.directive && variable.numeric) {
+      const { min, max, step } = variable.directive;
+      const slider = h("input", {
+        className: "variable-slider",
+        type: "range",
+        min,
+        max,
+        step,
+        value: variable.numeric.value,
+        "aria-label": `${variable.label} range`,
+        onpointerdown: (event) =>
+          this.#beginVariableGesture(variable, event as PointerEvent),
+        oninput: (event) => {
+          const input = event.currentTarget as HTMLInputElement;
+          if (this.#ignoredSlider === input) {
+            input.value = this.#ignoredSliderValue;
+            return;
+          }
+          const literal = `${formatSteppedNumber(Number(input.value), step)}${variable.numeric!.unit}`;
+          if (this.#gesture?.input === input)
+            this.#updateVariableGesture(literal);
+          else this.#commitVariable(variable, literal, input);
+          value.value = literal;
+        },
+        onpointerup: (event) =>
+          this.#finishSliderPointer(event.currentTarget as HTMLInputElement),
+        onpointercancel: () => this.#cancelVariableGesture(true),
+        onkeydown: (event) => {
+          if ((event as KeyboardEvent).key === "Escape") {
+            event.preventDefault();
+            this.#cancelVariableGesture(false);
+          }
+        },
+      });
+      children.push(slider);
+    }
+
+    return h(
+      "label",
+      { className: "variable-control", "data-variable": variable.name },
+      ...children,
+    );
+  }
+
+  #commitVariable(
+    variable: SourceVariable,
+    literal: string,
+    input: HTMLInputElement,
+  ): void {
+    const resolved = this.#resolveVariable(variable.name);
+    if (!literal || !resolved) {
+      input.value = variable.value;
+      this.#announce("The variable no longer has an editable source value.");
+      return;
+    }
+    const applied = applyEditIntent(
+      this.editor,
+      sourceVersion(this.#version),
+      replaceIntent(
+        resolved.index.version,
+        resolved.variable.valueRange,
+        literal,
+      ),
+      { isolate: true },
+    );
+    if (!applied) {
+      input.value = variable.value;
+      this.#announce(
+        "The variable changed in source; the edit was not applied.",
+      );
+    }
+  }
+
+  #beginVariableGesture(variable: SourceVariable, event: PointerEvent): void {
+    const resolved = this.#resolveVariable(variable.name);
+    if (!resolved) return;
+    window.clearTimeout(this.#previewTimer);
+    this.#previewTimer = undefined;
+    const input = event.currentTarget as HTMLInputElement;
+    this.#ignoredSlider = null;
+    this.#ignoredSliderValue = "";
+    this.#gesture = {
+      name: variable.name,
+      original: resolved.variable.value,
+      sliderOriginalValue: input.value,
+      input,
+      pointerId: event.pointerId,
+      from: resolved.variable.valueRange.from,
+      to: resolved.variable.valueRange.to,
+      final: resolved.variable.value,
+    };
+    try {
+      input.setPointerCapture(event.pointerId);
+    } catch {
+      // Synthetic input and older engines may not expose pointer capture.
+    }
+  }
+
+  #updateVariableGesture(literal: string): void {
+    const gesture = this.#gesture;
+    if (!gesture) return;
+    this.#applyingGesture = true;
+    const applied = applyEditIntent(
+      this.editor,
+      sourceVersion(this.#version),
+      replaceIntent(
+        sourceVersion(this.#version),
+        { from: gesture.from, to: gesture.to },
+        literal,
+      ),
+      { addToHistory: false },
+    );
+    this.#applyingGesture = false;
+    if (!applied) return this.#cancelVariableGesture(false);
+    gesture.to = gesture.from + literal.length;
+    gesture.final = literal;
+    this.preview.root?.style.setProperty(gesture.name, literal);
+  }
+
+  #commitVariableGesture(): void {
+    const gesture = this.#gesture;
+    if (!gesture) return;
+    if (gesture.final === gesture.original) {
+      this.#gesture = null;
+      if (!this.#index) this.#validateAndPublish();
+      return;
+    }
+    this.#applyingGesture = true;
+    applyEditIntent(
+      this.editor,
+      sourceVersion(this.#version),
+      replaceIntent(
+        sourceVersion(this.#version),
+        { from: gesture.from, to: gesture.to },
+        gesture.original,
+      ),
+      { addToHistory: false },
+    );
+    gesture.to = gesture.from + gesture.original.length;
+    applyEditIntent(
+      this.editor,
+      sourceVersion(this.#version),
+      replaceIntent(
+        sourceVersion(this.#version),
+        { from: gesture.from, to: gesture.to },
+        gesture.final,
+      ),
+      { isolate: true },
+    );
+    this.#applyingGesture = false;
+    this.#gesture = null;
+    this.#scheduleRecovery();
+    this.#validateAndPublish();
+  }
+
+  #cancelVariableGesture(pointerEnded: boolean): void {
+    const gesture = this.#gesture;
+    if (!gesture) return;
+    this.#applyingGesture = true;
+    applyEditIntent(
+      this.editor,
+      sourceVersion(this.#version),
+      replaceIntent(
+        sourceVersion(this.#version),
+        { from: gesture.from, to: gesture.to },
+        gesture.original,
+      ),
+      { addToHistory: false },
+    );
+    this.#applyingGesture = false;
+    this.preview.root?.style.setProperty(gesture.name, gesture.original);
+    gesture.input.value = gesture.sliderOriginalValue;
+    if (!pointerEnded) {
+      this.#ignoredSlider = gesture.input;
+      this.#ignoredSliderValue = gesture.sliderOriginalValue;
+      try {
+        gesture.input.releasePointerCapture(gesture.pointerId);
+      } catch {
+        // The pointer may already have ended or capture may be unavailable.
+      }
+    }
+    this.#gesture = null;
+    this.#scheduleRecovery();
+    this.#validateAndPublish();
+  }
+
+  #finishSliderPointer(input: HTMLInputElement): void {
+    if (this.#ignoredSlider === input) {
+      this.#ignoredSlider = null;
+      this.#ignoredSliderValue = "";
+      return;
+    }
+    this.#commitVariableGesture();
+  }
+
+  #resolveVariable(
+    name: string,
+  ): { index: SourceIndex; variable: SourceVariable } | null {
+    const validation = validateSvg(this.#source);
+    if (!validation.ok) return null;
+    const index = new SourceIndex(this.#source, sourceVersion(this.#version));
+    const variable = discoverRootVariables(index, validation.document).find(
+      (candidate) => candidate.name === name,
+    );
+    return variable ? { index, variable } : null;
+  }
+
+  async #openSelectedFile(event: Event): Promise<void> {
+    const input = event.currentTarget as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = "";
+    if (!file) return;
+    try {
+      const envelope = FileEnvelope.fromBytes(
+        file.name,
+        await file.arrayBuffer(),
+      );
+      if (!this.#confirmReplace(`open ${file.name}`)) return;
+      this.#loadEnvelope(envelope, envelope.source);
+      this.#announce(`${file.name} opened locally.`);
+    } catch (error) {
+      this.#announce(
+        error instanceof Error
+          ? `Could not open file: ${error.message}`
+          : "Could not open file.",
+      );
+    }
+  }
+
+  #loadEnvelope(envelope: FileEnvelope, source: string): void {
+    this.#envelope = envelope;
+    this.#baselineSource = envelope.source;
+    this.#filename.textContent = envelope.filename;
+    this.#sourceMeta.textContent = envelope.mixedLineEndings
+      ? "XML · mixed EOL → LF after edit"
+      : "XML · source of truth";
+    this.editor.dispatch({
+      changes: { from: 0, to: this.editor.state.doc.length, insert: source },
+      selection: EditorSelection.cursor(0),
+      annotations: Transaction.addToHistory.of(false),
+    });
+  }
+
+  #download(): void {
+    const bytes = this.#envelope.export(this.#source);
+    const blob = new Blob([bytes.slice().buffer], { type: "image/svg+xml" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = this.#filename.textContent || "untitled.svg";
+    link.click();
+    URL.revokeObjectURL(url);
+
+    this.#envelope = FileEnvelope.fromBytes(link.download, bytes);
+    this.#baselineSource = this.#source;
+    this.#dirty = false;
+    if (this.#status.textContent?.startsWith("valid"))
+      this.#status.textContent = "valid";
+    void clearRecovery();
+    this.#announce(`${link.download} downloaded.`);
+  }
+
+  #scheduleRecovery(): void {
+    window.clearTimeout(this.#recoveryTimer);
+    this.#recoveryTimer = window.setTimeout(() => {
+      if (!this.#dirty) {
+        void clearRecovery();
+        return;
+      }
+      void saveRecovery({
+        source: this.#source,
+        baseline: this.#baselineSource,
+        filename: this.#filename.textContent || "untitled.svg",
+        originalBytes: this.#envelope.export(this.#envelope.source),
+        updatedAt: Date.now(),
+      });
+    }, 350);
+  }
+
+  async #offerRecovery(): Promise<void> {
+    const recovery = await loadRecovery().catch(() => undefined);
+    if (!recovery || recovery.source === this.#source) return;
+    const age = new Date(recovery.updatedAt).toLocaleString();
+    this.#recoveryNotice.hidden = false;
+    this.#recoveryNotice.replaceChildren(
+      h("span", {}, `Unsaved ${recovery.filename} from ${age}`),
+      h(
+        "button",
+        { type: "button", onclick: () => this.#restoreRecovery(recovery) },
+        "restore",
+      ),
+      h(
+        "button",
+        { type: "button", onclick: () => void this.#discardRecovery() },
+        "discard",
+      ),
+    );
+  }
+
+  #restoreRecovery(recovery: RecoveryRecord): void {
+    if (!this.#confirmReplace(`restore ${recovery.filename}`)) return;
+    const envelope = FileEnvelope.fromBytes(
+      recovery.filename,
+      recovery.originalBytes,
+    );
+    this.#recoveryNotice.hidden = true;
+    this.#loadEnvelope(envelope, recovery.source);
+    this.#announce("Unsaved SVG restored.");
+  }
+
+  async #discardRecovery(): Promise<void> {
+    await clearRecovery();
+    this.#recoveryNotice.hidden = true;
+    this.#announce("Recovered draft discarded.");
+  }
+
+  #confirmReplace(action: string): boolean {
+    return (
+      !this.#dirty ||
+      window.confirm(
+        `The current SVG has unsaved changes. Continue to ${action} and replace them?`,
+      )
+    );
   }
 
   #announce(message: string): void {

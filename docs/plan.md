@@ -10,9 +10,9 @@ variables can be tuned through exact source-preserving controls.
 The active plan ends with the code-forward workbench. GodSVG-class visual-first
 editing is a separate possible extension in `docs/visual-editing-extension.md`.
 
-## Implementation checkpoint — 2026-08-04
+## Usable MVP checkpoint — 2026-08-04
 
-The first vertical slice is implemented and browser-verified:
+The session MVP is implemented and browser-verified:
 
 - Vite/TypeScript and CodeMirror XML editing in the warm split workbench;
 - debounced validation with explicit namespace/DOCTYPE/XML diagnostics and a
@@ -20,13 +20,23 @@ The first vertical slice is implemented and browser-verified:
 - validated DOM import into a fixed sandbox/CSP shell, plus pre-insertion
   neutralization of scripts, handlers, navigation, and remote references;
 - native CSS and SMIL detection, play/pause/restart, reduced-motion startup,
-  a live clock readout, and clock continuity across ordinary source edits;
+  shared inspection-time seeking, a live clock readout, and clock continuity
+  across ordinary source edits;
+- Lezer element/open-tag/attribute ranges aligned to the preview DOM, with
+  cursor-to-geometry outline, preview-to-opening-tag reveal, parent climbing,
+  and navigable breadcrumbs;
+- root custom-property discovery, exact versioned source edits, authored-bound
+  sliders, provisional live preview, cancel, precision policy, and one-undo
+  pointer gestures;
+- local open/download with untouched byte identity, explicit edited BOM/EOL
+  policy, and opt-in IndexedDB recovery;
 - Chromium, Firefox, and WebKit contracts for geometry APIs, animation,
   invalid-source retention, and hostile input.
 
-Checks: `npm run validate` and `npm run test:browser`. This checkpoint does not
-claim Phase 0 or the MVP complete: source/preview selection, shared seeking,
-files/recovery, and variable transactions remain the next product slices.
+Checks: `npm run validate` and `npm run test:browser`. This is a usable MVP, not
+the full public-quality exit described below. Animation provenance/source
+jumps, Inspect/Interact switching, pan/zoom, performance budgets, deeper
+instance fallbacks, and observed-user validation remain follow-on work.
 
 ## Non-goals
 

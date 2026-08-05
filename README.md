@@ -27,3 +27,21 @@ GodSVG-class expansion is isolated in the
 [visual editing extension](docs/visual-editing-extension.md).
 
 For a new working session, begin with the [handoff](docs/handoff.md).
+
+## Run the MVP
+
+```sh
+npm install
+npm run dev
+```
+
+Then open the local URL Vite prints. The bundled mixed CSS/SMIL example is
+immediately editable; use the preview to jump to source, the bottom rail to
+tune variables, and **open** / **download** for local SVG files.
+
+Validation:
+
+```sh
+npm run validate
+npm run test:browser
+```

@@ -138,8 +138,11 @@ not a timeless blanket claim.
    possible visual-first endpoint.
 3. The visual-first editing roadmap must remain a separate optional extension
    on top of the code-forward display.
-4. The deliverable for this session is a durable collaborative research,
-   proposal, informational, and handoff document set—not product code.
+4. The first requested deliverable was a durable collaborative research,
+   proposal, informational, and handoff document set.
+5. The later explicit direction superseded that stopping point: execute the
+   plan through a usable MVP, with Fable on architecture/high-risk review and
+   Opus on general implementation review.
 
 ## Final review outcome
 
@@ -178,6 +181,38 @@ and browser fixture matrix. The retained corrections were:
 These are captured as D013–D016 and in the updated design/plan. The gate kept
 path parsers, visual handles, tree editing, and a writable timeline outside the
 core.
+
+## MVP implementation reviews
+
+Parley session `ses_f2c4bc4f00a8999b` carried the implementation reviews.
+Opus made two general passes over the evolving workbench; retained corrections
+included listener cleanup, precise DOCTYPE detection, narrow-screen playback
+access, honest time/status labeling, CSS-only Firefox clock handling, and
+stronger remote-reference neutralization.
+
+Fable's first implementation gate confirmed the source-index/edit-intent
+architecture but found four material interaction defects: the preview froze
+during slider drags, Escape could be followed by resumed commits, rapid
+keyboard steps could lose the current source range, and preview publication
+destroyed control focus. The shipped gesture protocol addresses all four and
+has browser coverage.
+
+The final staged-diff review verified those fixes plus file identity, EOL/BOM
+policy, recovery, and shared seek. It then found a real Firefox timing race:
+the UI clock sampler could overwrite the captured pre-edit time while the
+replacement CSS/SMIL timelines were still becoming live. Publication now
+carries an immutable restore target, waits for delayed CSS animation discovery,
+settles paused clocks, resolves Firefox's pending CSS play state with
+`startTime`, and verifies the live clocks before exposing the new source
+generation. The two continuity cases subsequently passed 20 repeated Firefox
+runs in addition to the normal three-engine suite.
+
+The same review noted that replacing dirty work needed an explicit trust
+boundary and that a queued source publish could collide with pointerdown. Open
+and recovery restore now confirm before replacing unsaved work, and beginning a
+slider gesture clears the queued publish. Lower-risk parser breadth—CSS
+fallback usage counts and duplicate custom-property declarations—remains
+follow-on work rather than being silently generalized.
 
 ## Resulting document changes
 

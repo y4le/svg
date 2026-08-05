@@ -26,12 +26,6 @@ const TRUSTED_SHELL = `<!doctype html>
   <body></body>
 </html>`;
 
-function nextFrame(): Promise<void> {
-  return new Promise((resolve) =>
-    window.requestAnimationFrame(() => resolve()),
-  );
-}
-
 export class PreviewSession {
   readonly iframe: HTMLIFrameElement;
   #ready: Promise<void>;
@@ -78,8 +72,15 @@ export class PreviewSession {
     await this.#ready;
     if (generation !== this.#generation) return;
 
+    const expectedCss =
+      this.#family === "css" ||
+      this.#family === "mixed" ||
+      [...validation.document.querySelectorAll("style")].some((style) =>
+        /(?:^|[;{\s])animation(?:-name)?\s*:/i.test(style.textContent ?? ""),
+      );
     if (!options.restart) this.#captureTime();
     else this.#time = 0;
+    const restoreTime = this.#time;
 
     const frameDocument = this.document;
     if (!frameDocument || !this.iframe.contentWindow)
@@ -91,13 +92,33 @@ export class PreviewSession {
     );
     hardenImportedSvg(imported);
     frameDocument.body.replaceChildren(imported);
-    await nextFrame();
+    await this.#nextFrame();
     if (generation !== this.#generation) return;
 
-    this.#detectFamily();
+    const familyReady = await this.#detectFamily(generation, expectedCss);
+    if (!familyReady || generation !== this.#generation) return;
     this.#pauseClocks();
-    this.#applyTime();
-    if (!this.#paused) this.#playClocks();
+    const restored = await this.#settleTime(generation, restoreTime);
+    if (generation !== this.#generation) return;
+    if (!restored)
+      throw new Error("The preview animation clock could not be restored.");
+    if (!this.#paused) {
+      this.#playClocks();
+      // Firefox resets a newly inserted SMIL/CSS timeline when it first starts,
+      // even if a paused seek appeared to succeed. Seek again while the clocks
+      // are live and verify the result before exposing the new generation.
+      const playingRestored = await this.#settleTime(
+        generation,
+        restoreTime,
+        0.08,
+        true,
+      );
+      if (generation !== this.#generation) return;
+      if (!playingRestored)
+        throw new Error(
+          "The live preview animation clock could not be restored.",
+        );
+    }
     this.#emit();
   }
 
@@ -111,6 +132,12 @@ export class PreviewSession {
   play(): void {
     this.#paused = false;
     this.#applyPauseState();
+    this.#emit();
+  }
+
+  seek(time: number): void {
+    this.#time = Math.max(0, time);
+    this.#applyTime();
     this.#emit();
   }
 
@@ -148,17 +175,87 @@ export class PreviewSession {
     if (typeof fallbackTime === "number") this.#time = fallbackTime / 1000;
   }
 
-  #applyTime(): void {
+  #applyTime(running = false, time = this.#time): void {
     const root = this.root;
     if (root) {
       try {
-        root.setCurrentTime(this.#time);
+        root.setCurrentTime(time);
       } catch {
         // Some engines expose SVG clock methods before the timeline is ready.
       }
     }
-    for (const animation of this.#animations())
-      animation.currentTime = this.#time * 1000;
+    for (const animation of this.#animations()) {
+      const timelineTime = animation.timeline?.currentTime;
+      if (running && typeof timelineTime === "number") {
+        // Resolving the pending play task through startTime avoids Firefox
+        // discarding a currentTime assignment when a CSS animation starts.
+        animation.startTime = timelineTime - time * 1000;
+      } else {
+        animation.currentTime = time * 1000;
+      }
+    }
+  }
+
+  async #settleTime(
+    generation: number,
+    target: number,
+    tolerance = 0.03,
+    running = false,
+  ): Promise<boolean> {
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      this.#time = target;
+      this.#applyTime(running, target);
+      await this.#nextFrame();
+      if (generation !== this.#generation) return false;
+      if (this.#timeIsSettled(target, tolerance, running)) {
+        this.#time = target;
+        return true;
+      }
+    }
+    return false;
+  }
+
+  #timeIsSettled(target: number, tolerance: number, running: boolean): boolean {
+    if (this.#family === "smil" || this.#family === "mixed") {
+      try {
+        const current = this.root?.getCurrentTime();
+        if (
+          typeof current !== "number" ||
+          (running
+            ? current < target - tolerance
+            : Math.abs(current - target) > tolerance)
+        )
+          return false;
+      } catch {
+        return false;
+      }
+    }
+
+    if (this.#family === "css" || this.#family === "mixed") {
+      const animations = this.#animations();
+      if (animations.length === 0) return false;
+      for (const animation of animations) {
+        const current = animation.currentTime;
+        if (
+          typeof current !== "number" ||
+          (running
+            ? current / 1000 < target - tolerance
+            : Math.abs(current / 1000 - target) > tolerance)
+        )
+          return false;
+      }
+    }
+
+    return true;
+  }
+
+  #nextFrame(): Promise<void> {
+    // WebKit may suspend requestAnimationFrame inside a script-disabled
+    // sandbox document. The parent frame still advances the embedded render
+    // lifecycle without relying on authored-preview script capability.
+    return new Promise((resolve) =>
+      window.requestAnimationFrame(() => resolve()),
+    );
   }
 
   #applyPauseState(): void {
@@ -184,13 +281,30 @@ export class PreviewSession {
     for (const animation of this.#animations()) animation.play();
   }
 
-  #detectFamily(): void {
-    const hasSmil = Boolean(
-      this.root?.querySelector("animate, animateMotion, animateTransform, set"),
-    );
-    const hasCss = this.#animations().length > 0;
-    this.#family =
-      hasSmil && hasCss ? "mixed" : hasSmil ? "smil" : hasCss ? "css" : "none";
+  async #detectFamily(
+    generation: number,
+    expectedCss: boolean,
+  ): Promise<boolean> {
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      const hasSmil = Boolean(
+        this.root?.querySelector(
+          "animate, animateMotion, animateTransform, set",
+        ),
+      );
+      const hasCss = this.#animations().length > 0;
+      this.#family =
+        hasSmil && hasCss
+          ? "mixed"
+          : hasSmil
+            ? "smil"
+            : hasCss
+              ? "css"
+              : "none";
+      if (!expectedCss || hasCss) return true;
+      await this.#nextFrame();
+      if (generation !== this.#generation) return false;
+    }
+    return generation === this.#generation;
   }
 
   #emit(): void {

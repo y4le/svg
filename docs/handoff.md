@@ -2,12 +2,18 @@
 
 ## State at handoff
 
-The foundational research, architecture gate, and application scaffold are
-complete. The current implementation has CodeMirror editing, last-known-good
-SVG rendering in a script-disabled sandbox, explicit parse/capability evidence,
-and coherent CSS/SMIL play, pause, restart, and live time. The hostile-input and
-animation contracts run in Chromium, Firefox, and WebKit. Source/preview
-selection, seeking, variables, and files/recovery are the next active slices.
+The usable session MVP is complete. It has CodeMirror editing, last-known-good
+SVG rendering in a script-disabled sandbox, source ↔ rendered-element
+selection, coherent CSS/SMIL play/pause/restart/seek, exact source-backed root
+variables with authored sliders, local byte-aware open/download, and opt-in
+crash recovery. Hostile-input, animation-clock, selection, gesture, file, and
+recovery contracts run in Chromium, Firefox, and WebKit.
+
+The next work is public-quality depth rather than a missing basic loop:
+animation provenance and source jumps, Inspect/Interact switching, pan/zoom,
+deeper `use`/instance fallbacks, performance fixtures, and observed-user
+validation. Keep the GodSVG-class visual editor in the separate extension
+roadmap.
 
 The documentation baseline is `c068bb2`; the static scaffold is `86ebd67`.
 D001 and D011 record accepted owner direction; later accepted entries record
@@ -80,25 +86,28 @@ initially without a UI framework.
 
 These are planning estimates, not commitments. Re-estimate from Phase 0 data.
 
-## First implementation session
+## Next implementation session
 
-The Git/documentation baseline now exists. Do not start with chrome; execute
-Phase 0 as three vertical risk spikes:
+Start from the working product, not from the original Phase 0 instructions:
 
-1. Source/DOM mapping: CodeMirror/Lezer ranges, DOMParser alignment, moving
-   selection, invalid-source retention, `use`, namespaces, and exact attribute
-   name/value ranges.
-2. Secure animation: readable geometry plus blocked script/network/navigation,
-   CSS and SMIL clocks, restart, and shared seeking in Chromium/Firefox/WebKit.
-3. Variable edit: root CSS custom property, exact `EditIntent`, precision
-   policy, one undo gesture, stale-version refusal, and control-metadata
-   comparison.
+1. Run `npm install`, `npm run validate`, and `npm run test:browser`; then use
+   `npm run dev` for the local workbench.
+2. Take the next code-forward animation slice: index direct CSS keyframe/SMIL
+   targets for the current selection, show an animation outline, and jump to
+   exact source ranges. Keep unsupported cascade/reference cases visibly
+   read-only.
+3. Add the missing Inspect/Interact boundary before enabling authored pointer
+   events, then add pan/zoom without moving selection geometry into the SVG.
+4. Expand fixtures for `use` instances, duplicate custom-property
+   declarations, `var(--name, fallback)` usage, event-driven SMIL, and large
+   documents. Measure before adding workers or a framework.
+5. Run observed author/debugger/learner tasks before deciding the lead examples
+   or starting the separate visual-first extension.
 
-Before advancing, make no-edit open/inspect/play/seek/export byte-identical on
-hostile-format fixtures. Preserve BOM and uniform source line endings after
-edits; mixed line endings must receive an explicit normalization notice before
-the first edit. Then accept or revise the relevant decisions rather than
-burying a failed assumption under shell work.
+The current trust boundary is intentional: opening a new file or restoring a
+draft asks before replacing dirty work; untouched downloads retain exact input
+bytes; edited uniform EOL/BOM policy is preserved; edited mixed EOL becomes LF
+with a visible notice.
 
 ## Decision status and owner confirmation
 
@@ -115,7 +124,7 @@ Accepted by the pre-scaffold Fable architecture gate:
 - D015: root-child comment directives for bounded controls.
 - D016: document animation enumeration and Interact-implies-running clocks.
 
-The highest-leverage proposed decisions still needing confirmation are:
+Accepted after the implementation evidence matched the proposed contracts:
 
 - D002: source text is the only save/export authority.
 - D003: CSS + SVG animation and shared inspection time; no arbitrary JS.
@@ -139,10 +148,10 @@ exact inputs rather than losing document behavior.
 - GodSVG source was inspected; its typed elements/attributes, SVG/path parsers,
   transform models, and broad selection logic show why visual parity is not a
   short increment.
-- Local current-browser probes rendered CSS variables in SVG geometry and
-  sought CSS + SMIL to one shared second in Chromium, Firefox, and WebKit.
-  Recreate these as checked-in regression tests; the ad hoc probes are not a
-  deliverable.
+- Checked-in browser contracts render CSS variables in SVG geometry and seek
+  CSS + SMIL to one shared second in Chromium, Firefox, and WebKit. Clock
+  continuity is also stress-checked in Firefox after Fable exposed an
+  initialization race.
 - `~/dev/txttop` was absent. The matching `~/dev/txtop` project was surveyed,
   along with `~/dev/metrainome` and `~/dev/countrain`.
 - The visual direction was distilled from
@@ -178,11 +187,12 @@ living design plus compact chronological decisions.
 - After core validation, whether there is enough demand to start the optional
   visual-first extension at all?
 
-None blocks Phase 0. Record evidence and decide at the named gates.
+None blocks the next code-forward slice. Record audience and workflow evidence
+before changing product positioning or starting the optional extension.
 
 ## Completion definition for the next session
 
-The next session should not claim Phase 0 complete until the exact validation
-commands and fixture results are checked in, the security boundary is proven in
-the supported browsers, and any changed recommendation is reflected in design,
-plan, and the decision log. Keep the chat summary secondary to these files.
+Land one independently useful animation-inspection increment with exact source
+navigation, explicit unsupported states, fixtures in all three browser engines,
+and updated decisions/handoff where the evidence changes a contract. Keep the
+chat summary secondary to these files.

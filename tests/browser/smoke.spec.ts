@@ -1,9 +1,10 @@
 import { expect, test, type Page } from "@playwright/test";
+import { readFile } from "node:fs/promises";
 
 const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 
 async function replaceSource(page: Page, source: string): Promise<void> {
-  const editor = page.getByRole("textbox");
+  const editor = page.locator(".cm-content");
   await editor.click();
   await editor.fill(source);
 }
@@ -112,18 +113,17 @@ test("preserves the mixed animation clock through an ordinary source edit", asyn
       return root?.getCurrentTime() ?? 0;
     });
 
-  const editor = page.getByRole("textbox");
+  const editor = page.locator(".cm-content");
   await editor.click();
   await page.keyboard.press("Control+End");
   await page.keyboard.insertText("\n");
   await expect(page.getByTestId("document-status")).toContainText("changed");
   await expect
     .poll(() =>
-      page.locator("iframe").evaluate((frame: HTMLIFrameElement) => {
-        const root = frame.contentDocument?.querySelector("svg") as
-          (SVGSVGElement & { __oldRoot?: boolean }) | null;
-        return root ? !root.__oldRoot : false;
-      }),
+      page
+        .locator("iframe")
+        .getAttribute("data-source-version")
+        .then((version) => version === "1"),
     )
     .toBe(true);
 
@@ -166,12 +166,15 @@ test("uses the CSS animation clock for CSS-only documents", async ({
     .evaluate((frame: HTMLIFrameElement) =>
       Number(frame.contentDocument?.getAnimations()[0]?.currentTime ?? 0),
     );
-  const editor = page.getByRole("textbox");
+  const editor = page.locator(".cm-content");
   await editor.click();
   await page.keyboard.press("Control+End");
   await page.keyboard.insertText("\n");
   await expect(page.getByTestId("document-status")).toContainText("changed");
-  await page.waitForTimeout(250);
+  await expect(page.locator("iframe")).toHaveAttribute(
+    "data-source-version",
+    "2",
+  );
   const after = await page
     .locator("iframe")
     .evaluate((frame: HTMLIFrameElement) =>
@@ -379,4 +382,227 @@ test("links source positions and rendered elements through one selection", async
     modifiers: ["Shift"],
   });
   await expect(page.locator(".breadcrumb")).toContainText("svg›g#orbit");
+});
+
+test("edits root variables in source and shows sliders only for authored bounds", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const dotRange = page.getByLabel("dot size range");
+  await expect(dotRange).toBeVisible();
+  await expect(page.getByLabel("period range")).toBeVisible();
+  await expect(page.getByLabel("ink range")).toHaveCount(0);
+
+  await dotRange.fill("12");
+  await expect(page.getByTestId("document-status")).toContainText(
+    "valid · changed",
+  );
+  await expect(page.locator(".cm-content")).toContainText("--dot-size: 12px");
+  await expect(page.getByLabel("dot size value")).toHaveValue("12px");
+  const dotWidth = await page
+    .locator("iframe")
+    .evaluate(
+      (frame: HTMLIFrameElement) =>
+        (
+          frame.contentDocument?.querySelector(
+            "#dot",
+          ) as SVGGraphicsElement | null
+        )?.getBBox().width,
+    );
+  expect(dotWidth).toBeCloseTo(24, 0);
+
+  const ink = page.getByLabel("ink value");
+  await ink.fill("#00ff00");
+  await ink.press("Tab");
+  await expect(page.locator(".cm-content")).toContainText("--ink: #00ff00");
+});
+
+test("coalesces a slider pointer gesture into one undo step", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const slider = page.getByLabel("dot size range");
+  await expect(slider).toBeVisible();
+  await slider.evaluate((element: HTMLInputElement) => {
+    element.dispatchEvent(
+      new PointerEvent("pointerdown", { bubbles: true, pointerId: 7 }),
+    );
+    element.value = "13";
+    element.dispatchEvent(new Event("input", { bubbles: true }));
+    element.value = "15";
+    element.dispatchEvent(new Event("input", { bubbles: true }));
+    element.dispatchEvent(
+      new PointerEvent("pointerup", { bubbles: true, pointerId: 7 }),
+    );
+  });
+  await expect(page.locator(".cm-content")).toContainText("--dot-size: 15px");
+
+  await page.locator(".cm-content").click();
+  await page.keyboard.press("Control+z");
+  await expect(page.locator(".cm-content")).toContainText("--dot-size: 9px");
+});
+
+test("updates the preview during a slider gesture and cancels it durably", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const slider = page.getByLabel("dot size range");
+  await expect(slider).toBeVisible();
+  await slider.evaluate((element: HTMLInputElement) => {
+    element.dispatchEvent(
+      new PointerEvent("pointerdown", { bubbles: true, pointerId: 9 }),
+    );
+    element.value = "18";
+    element.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await expect(page.locator(".cm-content")).toContainText("--dot-size: 18px");
+  await expect
+    .poll(() =>
+      page
+        .locator("iframe")
+        .evaluate(
+          (frame: HTMLIFrameElement) =>
+            (
+              frame.contentDocument?.querySelector(
+                "#dot",
+              ) as SVGGraphicsElement | null
+            )?.getBBox().width,
+        ),
+    )
+    .toBeGreaterThan(35);
+
+  await slider.evaluate((element: HTMLInputElement) => {
+    element.dispatchEvent(
+      new KeyboardEvent("keydown", { bubbles: true, key: "Escape" }),
+    );
+    element.value = "16";
+    element.dispatchEvent(new Event("input", { bubbles: true }));
+    element.dispatchEvent(
+      new PointerEvent("pointerup", { bubbles: true, pointerId: 9 }),
+    );
+  });
+  await expect(page.locator(".cm-content")).toContainText("--dot-size: 9px");
+  await expect
+    .poll(() =>
+      page
+        .locator("iframe")
+        .evaluate(
+          (frame: HTMLIFrameElement) =>
+            (
+              frame.contentDocument?.querySelector(
+                "#dot",
+              ) as SVGGraphicsElement | null
+            )?.getBBox().width,
+        ),
+    )
+    .toBeLessThan(19);
+});
+
+test("accepts rapid keyboard slider steps and restores focus after publish", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const slider = page.getByLabel("dot size range");
+  await slider.focus();
+  await slider.evaluate((element: HTMLInputElement) => {
+    element.value = "10";
+    element.dispatchEvent(new Event("input", { bubbles: true }));
+    element.value = "11";
+    element.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await expect(page.locator(".cm-content")).toContainText("--dot-size: 11px");
+  await expect(page.getByLabel("dot size range")).toBeFocused();
+});
+
+test("seeks CSS and SMIL to one inspection time", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Pause animation" }).click();
+  await page.getByLabel("Inspection time").fill("1.5");
+  await expect(page.getByRole("timer")).toHaveText("1.50s");
+
+  const clocks = await page
+    .locator("iframe")
+    .evaluate((frame: HTMLIFrameElement) => {
+      const documentNode = frame.contentDocument;
+      const root = documentNode?.querySelector("svg") as SVGSVGElement | null;
+      return {
+        smil: root?.getCurrentTime() ?? 0,
+        css: Number(documentNode?.getAnimations()[0]?.currentTime ?? 0) / 1000,
+      };
+    });
+  expect(clocks.smil).toBeCloseTo(1.5, 1);
+  expect(clocks.css).toBeCloseTo(1.5, 1);
+});
+
+test("opens and downloads an untouched SVG with exact original bytes", async ({
+  page,
+}) => {
+  const source =
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10">\r\n  <circle r="4" />\r\n</svg>\r\n';
+  const original = Buffer.concat([
+    Buffer.from([0xef, 0xbb, 0xbf]),
+    Buffer.from(source, "utf8"),
+  ]);
+  await page.goto("/");
+  await page.getByLabel("Open SVG file").setInputFiles({
+    name: "exact.svg",
+    mimeType: "image/svg+xml",
+    buffer: original,
+  });
+  await expect(page.getByText("exact.svg", { exact: true })).toBeVisible();
+  await expect(page.getByTestId("document-status")).toHaveText("valid");
+
+  const [download] = await Promise.all([
+    page.waitForEvent("download"),
+    page.getByRole("button", { name: "download" }).click(),
+  ]);
+  expect(download.suggestedFilename()).toBe("exact.svg");
+  const path = await download.path();
+  expect(await readFile(path)).toEqual(original);
+});
+
+test("does not replace unsaved work without confirmation", async ({ page }) => {
+  const current = `<svg xmlns="${SVG_NAMESPACE}" viewBox="0 0 10 10"><circle id="keep-me" r="4" /></svg>`;
+  const replacement = `<svg xmlns="${SVG_NAMESPACE}" viewBox="0 0 10 10"><rect width="10" height="10" /></svg>`;
+  await page.goto("/");
+  await replaceSource(page, current);
+  await expect(page.getByTestId("document-status")).toContainText(
+    "valid · changed",
+  );
+
+  let prompt = "";
+  page.once("dialog", async (dialog) => {
+    prompt = dialog.message();
+    await dialog.dismiss();
+  });
+  await page.getByLabel("Open SVG file").setInputFiles({
+    name: "replacement.svg",
+    mimeType: "image/svg+xml",
+    buffer: Buffer.from(replacement),
+  });
+
+  expect(prompt).toContain("unsaved changes");
+  await expect(page.getByText("untitled.svg", { exact: true })).toBeVisible();
+  await expect(page.locator(".cm-content")).toContainText('id="keep-me"');
+});
+
+test("offers unsaved recovery and restores it only after confirmation", async ({
+  page,
+}) => {
+  const recovered = `<svg xmlns="${SVG_NAMESPACE}" viewBox="0 0 10 10"><circle id="recovered" r="4" /></svg>`;
+  await page.goto("/");
+  await replaceSource(page, recovered);
+  await expect(page.getByTestId("document-status")).toContainText(
+    "valid · changed",
+  );
+  await page.waitForTimeout(500);
+
+  await page.reload();
+  await expect(page.getByText(/Unsaved untitled\.svg/)).toBeVisible();
+  await expect(page.locator(".cm-content")).not.toContainText('id="recovered"');
+  await page.getByRole("button", { name: "restore" }).click();
+  await expect(page.locator(".cm-content")).toContainText('id="recovered"');
+  await expect(page.getByTestId("document-status")).toContainText(
+    "valid · changed",
+  );
 });

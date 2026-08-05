@@ -8,6 +8,7 @@ interface EditorOptions {
   readonly parent: HTMLElement;
   readonly document: string;
   readonly onChange: (source: string) => void;
+  readonly onSelectionChange?: (position: number) => void;
 }
 
 const workbenchTheme = EditorView.theme(
@@ -54,6 +55,9 @@ export function createEditor(options: EditorOptions): EditorView {
         workbenchTheme,
         EditorView.updateListener.of((update) => {
           if (update.docChanged) options.onChange(update.state.doc.toString());
+          if (update.selectionSet || update.docChanged) {
+            options.onSelectionChange?.(update.state.selection.main.head);
+          }
         }),
       ],
     }),

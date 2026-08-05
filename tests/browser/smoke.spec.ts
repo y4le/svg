@@ -269,10 +269,18 @@ test("blocks authored scripts, handlers, external loads, and navigation", async 
     ),
   ).toBeVisible();
   const initialUrl = page.url();
-  await page
-    .frameLocator("iframe")
-    .locator("a")
-    .click({ position: { x: 50, y: 50 } });
+  const link = await page
+    .locator("iframe")
+    .evaluate((frame: HTMLIFrameElement) => {
+      const rect = frame.contentDocument
+        ?.querySelector("a")
+        ?.getBoundingClientRect();
+      return rect
+        ? { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 }
+        : null;
+    });
+  expect(link).not.toBeNull();
+  await page.locator(".preview-inspector").click({ position: link! });
   expect(page.url()).toBe(initialUrl);
   expect(
     await page
@@ -330,4 +338,45 @@ test("keeps pause and restart visible on a narrow viewport", async ({
   await expect(page.getByRole("button", { name: "restart" })).toBeVisible();
   await expect(page.getByRole("button", { name: "open" })).toBeHidden();
   await expect(page.getByRole("button", { name: "download" })).toBeHidden();
+});
+
+test("links source positions and rendered elements through one selection", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await expect(page.getByTestId("document-status")).toHaveText("valid");
+  await page.getByRole("button", { name: "Pause animation" }).click();
+
+  await page
+    .locator(".cm-line")
+    .nth(22)
+    .click({ position: { x: 120, y: 8 } });
+  await expect(page.locator(".breadcrumb")).toContainText("circle#dot");
+  await expect(page.getByTestId("selection-box")).toBeVisible();
+
+  const dot = await page
+    .locator("iframe")
+    .evaluate((frame: HTMLIFrameElement) => {
+      const rect = frame.contentDocument
+        ?.querySelector("#dot")
+        ?.getBoundingClientRect();
+      return rect
+        ? { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 }
+        : null;
+    });
+  expect(dot).not.toBeNull();
+  await page.locator(".preview-inspector").click({ position: dot! });
+
+  await expect(page.locator(".breadcrumb")).toContainText(
+    "svg›g#orbit›circle#dot",
+  );
+  expect(await page.evaluate(() => window.getSelection()?.toString())).toBe(
+    "circle",
+  );
+
+  await page.locator(".preview-inspector").click({
+    position: dot!,
+    modifiers: ["Shift"],
+  });
+  await expect(page.locator(".breadcrumb")).toContainText("svg›g#orbit");
 });

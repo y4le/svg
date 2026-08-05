@@ -33,10 +33,14 @@ The session MVP is implemented and browser-verified:
 - Chromium, Firefox, and WebKit contracts for geometry APIs, animation,
   invalid-source retention, and hostile input.
 
-Checks: `npm run validate` and `npm run test:browser`. This is a usable MVP, not
-the full public-quality exit described below. Animation provenance/source
-jumps, Inspect/Interact switching, pan/zoom, performance budgets, deeper
-instance fallbacks, and observed-user validation remain follow-on work.
+Checkpoint: `89bac50`. `npm run validate` passes formatting, lint, TypeScript,
+25 unit tests, and the production build; `npm run test:browser` passes 57/57 in
+Chromium, Firefox, and WebKit. The previously flaky Firefox mixed/CSS clock
+cases also pass 20/20 under `--repeat-each 10` stress, and Fable's final focused
+review returned `looks-good`. This is a usable MVP, not the full public-quality
+exit described below. Animation provenance/source jumps, Inspect/Interact
+switching, pan/zoom, performance budgets, deeper instance fallbacks, and
+observed-user validation remain follow-on work.
 
 ## Non-goals
 

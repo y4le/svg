@@ -15,9 +15,23 @@ deeper `use`/instance fallbacks, performance fixtures, and observed-user
 validation. Keep the GodSVG-class visual editor in the separate extension
 roadmap.
 
-The documentation baseline is `c068bb2`; the static scaffold is `86ebd67`.
-D001 and D011 record accepted owner direction; later accepted entries record
-architecture gates deliberately locked during implementation.
+The usable MVP lands through `89bac50` on `main`; this handoff may be followed
+by a documentation-only commit. Earlier milestones are `c068bb2` for the
+documentation baseline and `86ebd67` for the static scaffold. The worktree was
+clean at handoff. D001 and D011 record accepted owner direction; later accepted
+entries record architecture gates deliberately locked during implementation.
+
+Final verification at `89bac50`:
+
+- `npm run validate` passes formatting, lint, TypeScript, 25 unit tests, and the
+  production build;
+- `npm run test:browser` passes 57/57 contracts across Chromium, Firefox, and
+  WebKit;
+- the two Firefox mixed/CSS clock-continuity cases pass 20/20 under
+  `--repeat-each 10` stress;
+- desktop and narrow-screen visual checks were completed;
+- Opus completed two general reviews, and Fable's final focused staged-diff
+  review returned `looks-good` after independently reproducing the gates.
 
 Final owner direction:
 
@@ -37,9 +51,10 @@ Read in this order:
 
 1. `AGENTS.md` — invariants, boundaries, and working policy.
 2. `docs/design.md` — authoritative code-forward product/system design.
-3. `docs/plan.md` — active Phase 0–4 delivery plan and core animation follow-on.
-4. `docs/decisions.md` — accepted owner boundaries and proposed choices to
-   accept or revise.
+3. `docs/plan.md` — completed usable checkpoint, remaining public-quality
+   phases, and the core animation follow-on.
+4. `docs/decisions.md` — accepted owner, architecture, and implementation
+   choices.
 5. `docs/research/2026-08-04-foundational.md` — evidence and competition.
 6. `docs/research/2026-08-04-fable-collaboration.md` — what the parallel Fable
    work changed and where judgment differed.
@@ -58,7 +73,8 @@ The opening product is not distinguished by split preview alone. It combines:
 - parser-backed source ↔ rendered-element navigation;
 - secure browser-native CSS and SVG animation playback;
 - a shared inspection time with honest limits for indefinite/event timing;
-- selected-element animation provenance and source jumping;
+- selected-element animation provenance and source jumping as the next core
+  increment;
 - exact CSS custom-property controls, with sliders only for authored bounds;
 - local files/recovery, no account/backend, and untrusted preview isolation;
 - the quiet Yale visual system: warm black/ink, hairline rules, Geist/Mono,
@@ -84,7 +100,8 @@ initially without a UI framework.
   especially for paths, transforms, structural edits, cascade provenance, and
   visual animation authoring.
 
-These are planning estimates, not commitments. Re-estimate from Phase 0 data.
+These are planning estimates, not commitments. Re-estimate remaining
+public-quality work from the checked-in MVP and its browser evidence.
 
 ## Next implementation session
 
@@ -108,6 +125,14 @@ The current trust boundary is intentional: opening a new file or restoring a
 draft asks before replacing dirty work; untouched downloads retain exact input
 bytes; edited uniform EOL/BOM policy is preserved; edited mixed EOL becomes LF
 with a visible notice.
+
+Current limits are equally intentional: the inspection scrubber exposes a
+0–10 second horizon rather than pretending to infer every indefinite or
+event-driven duration; controls discover direct-root custom-property literals
+and direct-root `@control` comments; animation provenance, Inspect/Interact,
+pan/zoom, richer `use` instances, and direct filesystem save are not yet
+implemented. Do not present the separate visual-editing extension as current
+core capability.
 
 ## Decision status and owner confirmation
 

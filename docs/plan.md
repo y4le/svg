@@ -28,13 +28,13 @@ about five to seven weeks total. The largest uncertainty is not the split view;
 it is the interaction among robust source mapping, preview isolation, mixed
 animation clocks, and source-preserving variable edits.
 
-| Capability | Expected effort | Why |
-| --- | --- | --- |
-| App shell, CodeMirror, last-valid preview, zoom/pan, files | 4–7 days | Established components and platform APIs; quality still needs state/recovery work |
-| Bidirectional source/render selection | 5–10 days | Basic mapping is easy; honest behavior for transforms, instances, malformed edits, and scale needs fixtures and fallbacks |
-| Secure CSS + SVG animation preview and controls | 4–7 days | Rendering is native; isolation, duration limits, provenance, and coherent seek across two clock families need browser verification |
-| CSS custom-property control rail | 4–7 days | Discovery is small; exact versioned source edits, units, continuous undo, and directives create the real work |
-| Accessibility, security, performance, browser hardening | 5–10 days | This is core product trust, not a final cosmetic pass |
+| Capability                                                 | Expected effort | Why                                                                                                                                |
+| ---------------------------------------------------------- | --------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| App shell, CodeMirror, last-valid preview, zoom/pan, files | 4–7 days        | Established components and platform APIs; quality still needs state/recovery work                                                  |
+| Bidirectional source/render selection                      | 5–10 days       | Basic mapping is easy; honest behavior for transforms, instances, malformed edits, and scale needs fixtures and fallbacks          |
+| Secure CSS + SVG animation preview and controls            | 4–7 days        | Rendering is native; isolation, duration limits, provenance, and coherent seek across two clock families need browser verification |
+| CSS custom-property control rail                           | 4–7 days        | Discovery is small; exact versioned source edits, units, continuous undo, and directives create the real work                      |
+| Accessibility, security, performance, browser hardening    | 5–10 days       | This is core product trust, not a final cosmetic pass                                                                              |
 
 A full timeline editor with geometry handles, keyframe manipulation,
 morph/path support, and multi-format export is a separate multi-quarter
@@ -124,6 +124,8 @@ assumption under UI work.
 - Implement open, paste/new, download, dirty state, and local crash recovery.
 - Integrate versioned parsing, last-known-good preview, diagnostics, and atomic
   preview replacement.
+- Preserve playback time and running/paused state across ordinary source
+  updates; reserve time zero for explicit Restart.
 - Land bidirectional selection, breadcrumb navigation, `use` follow/back, and
   a non-invasive moving selection overlay.
 - Keep screen/user-space and CTM math in a tested geometry module rather than
@@ -144,6 +146,8 @@ edits.
   the shared `EditIntent` compiler.
 - Parse optional bounded `@control` directives and add hairline sliders.
 - Coalesce gestures into one undo operation and retain source selection.
+- Make `Escape`/`pointercancel` restore the original literal with no history
+  entry; verify redo returns a committed final value.
 - Show declaration location, usage count when cheaply knowable, and clear
   diagnostics for unsupported values/directives.
 - Add parametric geometry, color, and animation-duration examples.
@@ -190,9 +194,12 @@ loop.
 - [ ] Edits preserve uniform original EOL/BOM policy; mixed EOL normalization
       is visible before the first edit and deterministic afterward.
 - [ ] Invalid XML retains a labeled last-valid preview and useful diagnostic.
+- [ ] Empty, cold-invalid, warm-stale, and valid-but-blank states are distinct
+      and teach the user what happened.
 - [ ] Source → preview and preview → source work for the supported fixture
       matrix, with documented instance fallbacks.
 - [ ] CSS and SVG animation run, pause, and restart.
+- [ ] Ordinary edits preserve playback time/state; only Restart returns to zero.
 - [ ] Supported CSS and SVG animation seek to a shared inspection time; timing
       cases outside the contract are identified rather than misrepresented.
 - [ ] Reduced-motion preference begins preview motion paused.
@@ -202,6 +209,7 @@ loop.
 - [ ] Version-stale edit intents refuse to write, and numeric scrubbing does
       not accumulate floating-point noise.
 - [ ] Open/paste/download/recovery work without an account or server.
+- [ ] Recovery is offered with timestamp/discard and never silently applied.
 - [ ] Keyboard and visible-focus paths cover the primary loop.
 - [ ] Chrome, Firefox, and Safari pass the core browser contract.
 - [ ] Performance fixtures meet measured budgets or display a documented size

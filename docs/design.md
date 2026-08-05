@@ -192,12 +192,21 @@ See `docs/visual-editing-extension.md` for its staged capability ladder.
 
 ### Invalid and stale states
 
+- **Empty:** show concise instruction plus animated and parametric examples;
+  never present two unexplained blank panes.
+- **Cold invalid:** when no valid preview exists yet, show the located parser or
+  capability diagnostic and state that nothing has rendered yet.
+- **Warm invalid:** preserve the last valid rendering with a `stale` label and
+  locate the current source error.
+- **Valid but blank:** distinguish successful rendering with no visible bounds
+  from a parse failure and suggest namespace, size/viewBox, and off-canvas
+  checks.
 - Editor input remains responsive at all times.
 - Parse and preview update after a short idle debounce; selection mapping is
   versioned to the same source snapshot.
-- On invalid XML, preserve the last valid rendering with a `stale` label and
-  show the first useful error at the source. Do not blank or partially replace
-  the preview.
+- On invalid XML after a valid version, preserve the last valid rendering with
+  a `stale` label and show the first useful error at the source. Do not blank or
+  partially replace the preview.
 - When the document becomes valid, replace the preview atomically and restore
   selection by a structural anchor when possible.
 
@@ -270,6 +279,9 @@ override and offer navigation to the winning animation source.
   `pauseAnimations()` and `unpauseAnimations()`.
 - **Restart:** rebuild the isolated preview from the current valid source so
   both families return to authored initial state.
+- **Ordinary source update:** capture the inspection time and running/paused
+  state before replacing the preview, then restore them on the rebuilt CSS and
+  SMIL clocks. Editing must not throw an author back to zero; only Restart does.
 - **Time:** report SVG document time when available. A seek control is shown
   when the document has a meaningful bounded duration or the user supplies an
   inspection horizon. Seeking sets the SMIL document clock and the current time
@@ -284,6 +296,9 @@ override and offer navigation to the winning animation source.
   transitions/pseudo-states and supported SMIL event begins. Entering Interact
   resumes both animation families; the status rail shows the active mode so
   selecting and triggering are never ambiguous.
+- **Reduced motion + interaction:** entering Interact is the user's explicit run
+  action when reduced motion began paused; announce that motion will resume
+  rather than overriding the preference silently.
 
 ### Script boundary
 
@@ -353,6 +368,10 @@ updates only that range, and commits as one undoable gesture. If concurrent
 typing invalidates the range, stop the gesture and re-resolve; never write at
 an old offset.
 
+`Escape` or `pointercancel` abandons a control gesture, restores its original
+literal, and creates no history entry. A committed gesture produces one undo
+entry and redo returns its final value.
+
 Numeric writeback retains the replaced token's practical decimal precision and
 caps precision for newly generated values. It removes floating-point noise
 without altering untouched tokens. Scientific notation and unusual but valid
@@ -380,6 +399,9 @@ bytes. After an edit, uniform LF/CRLF/CR endings and BOM are preserved; mixed
 line endings are normalized deterministically after a visible one-time notice.
 This is the truthful boundary of byte fidelity because CodeMirror cannot retain
 arbitrary mixed separators in its line model.
+
+Recovery persists source text and filename only after idle. On startup it is
+offered with timestamp and discard actions; it is never silently applied.
 
 ### Proposed stack
 

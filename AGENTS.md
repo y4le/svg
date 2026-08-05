@@ -65,8 +65,9 @@ authoritative for current scope. Research is evidence, not policy.
 - Before a substantial change, put its goal, non-goals, acceptance checks, and
   affected boundaries in `docs/plan.md` or a linked focused plan.
 - Run the smallest tests that could plausibly fail, then the project format,
-  typecheck, lint, unit, and browser checks relevant to the change. Record the
-  exact commands here once the scaffold establishes them.
+  typecheck, lint, unit, and browser checks relevant to the change. The standard
+  gates are `npm run validate` and, for preview/interaction changes,
+  `npm run test:browser`; use `npm run format` to apply repository formatting.
 - Update the design when behavior or architecture changes. Add a decision-log
   entry only when alternatives and rationale will matter later.
 - Use a collaborator for high-risk architecture, security, parser, or release

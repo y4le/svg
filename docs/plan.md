@@ -52,6 +52,8 @@ spikes; keep only code that meets the intended contracts.
 - Mount CodeMirror 6 with XML/Lezer support.
 - From one valid source version, collect exact element, opening-tag, attribute
   name, and attribute value ranges and align elements to a DOMParser tree.
+- Diagnose a root outside `http://www.w3.org/2000/svg` explicitly; do not
+  silently render namespace-less pasted XML as a blank preview or auto-fix it.
 - Demonstrate code → moving preview element and preview click → opening tag.
 - Exercise nested groups, same-tag siblings, namespaces, transforms, `use`,
   comments containing tag-like text, CDATA/style text, and invalid intermediate
@@ -80,6 +82,8 @@ that structural edits either remap correctly or fail visibly.
   transformed moving selection. If opaque origin is required, prove a narrow
   measurement bridge in the spike.
 - Test current Chrome, Firefox, and Safari.
+- Populate the trusted sandbox shell only by `importNode()` from the validated
+  XML DOM. User SVG never passes through `srcdoc` or `innerHTML` parsing.
 
 Gate: declarative animation works; hostile fixtures produce zero execution,
 network, navigation, or parent mutation. If same-origin readable sandboxing is
@@ -92,8 +96,9 @@ inconsistent, redesign around opaque origin before product work.
   minimal span replacement, numeric-format policy, selection result, and undo
   grouping; do not put writeback plumbing inside the variable UI.
 - Render label, value, and unit; add one explicit bounded slider directive.
-- Compare comment directives with one root namespaced/data control schema on
-  hand readability, exact source ranges, DOM parsing, and default SVGO output.
+- Parse one canonical root-child comment form and attempt to falsify it against
+  exact source ranges, malformed directives, and a default SVGO pass:
+  `<!-- @control --radius min=8 max=80 step=1 -->`.
 - Scrub a value while source and preview update.
 - Produce one undo step for a complete gesture and abort safely after a
   conflicting source edit.
@@ -101,7 +106,8 @@ inconsistent, redesign around opaque origin before product work.
   numeric lexemes, entities, CDATA, comments, and inline CSS.
 
 Gate: saved source changes only the chosen literal; undo restores the exact
-original text; all no-edit open/inspect/play/seek/export paths are byte-identical.
+original text; all no-edit paths preserve original bytes, including BOM and
+mixed EOLs, while an edited mixed-EOL document names its normalization.
 
 ### Phase 0 decision review
 
@@ -180,7 +186,9 @@ loop.
 
 - [ ] Source, not preview DOM, is the only saved/exported authority.
 - [ ] Opening, inspecting, playing, seeking, and exporting without a source
-      edit is byte-identical on hostile-format fixtures.
+      edit is byte-identical on hostile-format fixtures, including BOM/CRLF.
+- [ ] Edits preserve uniform original EOL/BOM policy; mixed EOL normalization
+      is visible before the first edit and deterministic afterward.
 - [ ] Invalid XML retains a labeled last-valid preview and useful diagnostic.
 - [ ] Source → preview and preview → source work for the supported fixture
       matrix, with documented instance fallbacks.

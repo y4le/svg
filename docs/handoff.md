@@ -2,12 +2,11 @@
 
 ## State at handoff
 
-The foundational research and proposal are complete. The repository contains
-documentation and Parley collaboration history only; no application scaffold
-or product code has been created, and this directory is not yet a Git
-repository. D001 and D011 record accepted owner direction; all other decisions
-remain `proposed` until the owner accepts them or implementation deliberately
-locks them in.
+The foundational research and proposal are complete. Git was initialized and
+the documentation baseline was committed as `c068bb2` before implementation.
+No application scaffold or product code existed at that baseline. D001 and
+D011 record accepted owner direction; later accepted entries record architecture
+gates deliberately locked during implementation.
 
 Final owner direction:
 
@@ -78,9 +77,8 @@ These are planning estimates, not commitments. Re-estimate from Phase 0 data.
 
 ## First implementation session
 
-Do not start with chrome. First initialize Git and commit this documentation
-baseline so the stated history/decision policy is real. Then execute Phase 0 as
-three vertical risk spikes:
+The Git/documentation baseline now exists. Do not start with chrome; execute
+Phase 0 as three vertical risk spikes:
 
 1. Source/DOM mapping: CodeMirror/Lezer ranges, DOMParser alignment, moving
    selection, invalid-source retention, `use`, namespaces, and exact attribute
@@ -92,8 +90,10 @@ three vertical risk spikes:
    comparison.
 
 Before advancing, make no-edit open/inspect/play/seek/export byte-identical on
-hostile-format fixtures. Then accept or revise the relevant decisions rather
-than burying a failed assumption under shell work.
+hostile-format fixtures. Preserve BOM and uniform source line endings after
+edits; mixed line endings must receive an explicit normalization notice before
+the first edit. Then accept or revise the relevant decisions rather than
+burying a failed assumption under shell work.
 
 ## Decision status and owner confirmation
 
@@ -101,6 +101,14 @@ Already accepted from explicit owner direction:
 
 - D001: code-forward core; visual-first editor is separate.
 - D011: GodSVG benchmarks that optional extension, not the implementation/core.
+
+Accepted by the pre-scaffold Fable architecture gate:
+
+- D012: one exact, versioned `EditIntent` writeback path.
+- D013: truthful original-byte and edited EOL/BOM policy.
+- D014: validated XML DOM import into a trusted sandbox shell.
+- D015: root-child comment directives for bounded controls.
+- D016: document animation enumeration and Interact-implies-running clocks.
 
 The highest-leverage proposed decisions still needing confirmation are:
 
@@ -110,12 +118,11 @@ The highest-leverage proposed decisions still needing confirmation are:
 - D006/D007: CSS custom properties; exact controls before bounded sliders.
 - D008: local static TypeScript/Vite, no framework/backend initially.
 - D009: the lean documentation/policy set.
-- D010/D012: versioned source-command boundary and one exact `EditIntent`
-  writeback path.
+- D010: versioned source-command boundary.
 
-The control metadata form remains intentionally unresolved between readable
-comments and one namespaced/data root schema. Phase 0 supplies the decision
-evidence.
+Root-child `@control` comments are the selected MVP metadata form. CSS custom
+properties remain the only value authority; lost/invalid comments degrade to
+exact inputs rather than losing document behavior.
 
 ## Evidence already gathered
 
@@ -159,7 +166,8 @@ living design plus compact chronological decisions.
 - Which initial audience leads examples and onboarding: animation authors,
   exported-SVG debuggers, or learners?
 - What is the product name?
-- Comment versus namespaced/data control metadata?
+- Whether real optimizer-heavy workflows eventually justify superseding comment
+  control directives with a sidecar or namespaced/data representation?
 - CSS versus SMIL prevalence in real target files?
 - Whether direct filesystem save belongs in the first public surface?
 - After core validation, whether there is enough demand to start the optional

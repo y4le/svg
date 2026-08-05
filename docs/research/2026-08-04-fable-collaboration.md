@@ -80,9 +80,9 @@ the spike must prove a narrow measurement bridge rather than defer the boundary.
 ### Mechanical source trust
 
 No-edit open/inspect/play/seek/export is byte-identical. Golden fixtures cover
-odd numeric forms, whitespace, quote styles, entities, CDATA, comments, and
-inline CSS. Numeric edits prevent floating-point noise and change only asserted
-spans. Trust is enforced by tests rather than intention.
+BOM/EOL policy, odd numeric forms, whitespace, quote styles, entities, CDATA,
+comments, and inline CSS. Numeric edits prevent floating-point noise and change
+only asserted spans. Trust is enforced by tests rather than intention.
 
 ## Disagreements and how they resolved
 
@@ -111,10 +111,11 @@ adds one only after measured state/component pressure.
 
 ### Control metadata
 
-Fable preferred a namespaced root schema; the initial proposal preferred
-readable comments. No winner was manufactured. Phase 0 compares comment and
-namespaced/data representations while CSS custom properties remain the only
-value authority.
+Fable initially preferred a namespaced root schema; the initial proposal
+preferred readable comments. The implementation architecture gate resolved the
+choice in favor of one root-child comment schema because independent readable
+directives fit the hand-authoring workflow and optimizer loss degrades only the
+slider bounds. CSS custom properties remain the only value authority.
 
 ### Click-to-source novelty
 
@@ -154,6 +155,29 @@ in before handoff:
   CSS/SMIL pointer-triggered animation;
 - CSS↔SMIL conversion is explicitly outside the core and, if ever built, lives
   as a previewed V6 extension command.
+
+## Implementation architecture gate
+
+Before scaffold work, Fable ran a further high-risk gate over the source index,
+edit-intent history, sandbox, mixed animation clocks, provenance, directives,
+and browser fixture matrix. The retained corrections were:
+
+- file transport explicitly preserves unedited bytes and uniform EOL/BOM while
+  visibly normalizing mixed EOL after an edit;
+- preview SVG is imported from the validated XML DOM into a trusted static
+  sandbox shell, never reparsed through HTML `srcdoc`/`innerHTML`;
+- the source/preview map uses verified preorder ordinals plus parent-owned weak
+  maps, with no observable preview attributes;
+- `Document.getAnimations()` drives whole-preview CSS/WAAPI enumeration and
+  entering Interact mode resumes CSS/SMIL clocks;
+- missing SVG namespace is a dedicated diagnostic rather than a blank preview;
+- root-child `@control` comments are the only bounded-control metadata form;
+- the `EditIntent` compiler owns stale-version refusal, minimal spans, numeric
+  formatting, and a deterministic one-undo gesture protocol.
+
+These are captured as D013–D016 and in the updated design/plan. The gate kept
+path parsers, visual handles, tree editing, and a writable timeline outside the
+core.
 
 ## Resulting document changes
 

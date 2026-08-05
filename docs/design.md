@@ -186,8 +186,9 @@ See `docs/visual-editing-extension.md` for its staged capability ladder.
 - Preview pointer input has two explicit modes. **Inspect** is the default and
   uses clicks for source selection. **Interact** passes hover/click input to the
   document so CSS pseudo-state transitions and event-based SMIL begins can run;
-  it preserves the current selection and exits through `Escape` or the stable
-  top-rail mode control. Sandbox navigation/link policy still applies.
+  it preserves the current selection, resumes the document clocks so new
+  transitions respond, and exits through `Escape` or the stable top-rail mode
+  control. Sandbox navigation/link policy still applies.
 
 ### Invalid and stale states
 
@@ -264,8 +265,8 @@ override and offer navigation to the winning animation source.
 
 ### Playback controller
 
-- **Pause/play:** control CSS/Web Animations objects through
-  `getAnimations({subtree:true})`; control the SVG document clock through
+- **Pause/play:** control CSS/Web Animations objects through the preview
+  document's `getAnimations()` result; control the SVG document clock through
   `pauseAnimations()` and `unpauseAnimations()`.
 - **Restart:** rebuild the isolated preview from the current valid source so
   both families return to authored initial state.
@@ -280,8 +281,9 @@ override and offer navigation to the winning animation source.
   begins paused when reduced motion is requested, with an explicit opt-in run.
 - **Event interaction:** Inspect mode owns clicks for source navigation;
   Interact mode delivers hover/click to the rendered document for CSS
-  transitions/pseudo-states and supported SMIL event begins. The status rail
-  shows the active mode so selecting and triggering are never ambiguous.
+  transitions/pseudo-states and supported SMIL event begins. Entering Interact
+  resumes both animation families; the status rail shows the active mode so
+  selecting and triggering are never ambiguous.
 
 ### Script boundary
 
@@ -318,7 +320,7 @@ while covering reusable colors, lengths, angles, times, opacity, and numbers.
 
 ```svg
 <svg style="--radius: 32px; --period: 1.8s; --ink: #c1432e">
-  <!-- @control --radius min=8 max=80 step=1 unit=px -->
+  <!-- @control --radius min=8 max=80 step=1 -->
   <!-- ... var(--radius), var(--period), var(--ink) ... -->
 </svg>
 ```
@@ -336,11 +338,12 @@ The directive is metadata, not the value. The value always lives in the CSS
 declaration. A missing or mismatched directive produces a diagnostic and does
 not invent source.
 
-The comment representation is intentionally proposed, not locked. Phase 0
-also tests a root foreign-namespace or `data-*` JSON schema, which is more
-machine-structured and may survive authoring tools differently. Pick the form
-that best preserves readability, round-tripping, and optimizer behavior; do
-not create two canonical schemas.
+The canonical MVP representation is one directive per comment placed directly
+under the root `<svg>`: `@control <name> min=<n> max=<n> step=<n>`. An optional
+`unit=<u>` only cross-checks the literal's own unit and never supplies it.
+Malformed directives or comments lost to optimization remove only the bounded
+slider; the exact value control and SVG behavior remain. Do not support a
+second namespaced/data schema in parallel.
 
 ### Source updates and undo
 
@@ -367,6 +370,16 @@ Do not extend into a private expression graph until evidence shows that CSS
 `calc()`, custom properties, and ordinary SVG animation cannot serve the work.
 
 ## Architecture
+
+### File envelope
+
+CodeMirror owns the logical editable text, while a small transport envelope
+records the originally decoded string, UTF-8 BOM presence, detected line-ending
+policy, and dirty state. Exporting an untouched document returns the original
+bytes. After an edit, uniform LF/CRLF/CR endings and BOM are preserved; mixed
+line endings are normalized deterministically after a visible one-time notice.
+This is the truthful boundary of byte fidelity because CodeMirror cannot retain
+arbitrary mixed separators in its line model.
 
 ### Proposed stack
 
@@ -487,15 +500,23 @@ prove one end-to-end variable or animation command.
 - Test emitted source, preview result, selection restoration, and undo as one
   contract—not as independent features.
 - Opening, inspecting, playing, seeking, and exporting without an edit must be
-  byte-identical. Golden fixtures enforce this for unusual numbers, entities,
-  whitespace, quotes, CDATA, comments, and inline CSS.
+  byte-identical. Golden fixtures enforce this for BOM, CRLF/mixed EOLs,
+  unusual numbers, entities, whitespace, quotes, CDATA, comments, and inline
+  CSS. After an edit, the declared EOL/BOM policy applies.
 
 ### Security contract
 
 - Parse as SVG/XML, reject parser errors and document type declarations in the
   first release.
+- Require the parsed root to be an SVG element in
+  `http://www.w3.org/2000/svg`; namespace-less pasted XML receives a specific
+  diagnostic rather than a blank preview or silent source rewrite.
 - Preview in an iframe with script disabled and parent inspection tested.
-- Apply a CSP that denies network sources and top-level navigation.
+- Keep `srcdoc` limited to a trusted static shell and import the already
+  validated XML document element with `importNode()`. Never put user SVG text
+  through HTML `srcdoc` or `innerHTML` parsing.
+- Apply a CSP that denies network sources and top-level navigation; install a
+  parent-owned link guard for Interact mode.
 - Treat `foreignObject`, links, embedded media, external `href`, inline event
   attributes, and scripts as explicit security fixtures.
 - Sanitization may remove prohibited capability in the preview, but must never
@@ -539,9 +560,8 @@ Technical budgets to validate, then adjust from evidence:
    browser support, or is open/download plus recovery sufficient initially?
 4. Do real target files favor CSS or SVG animation elements? That determines
    how much timeline/seek work earns an early place.
-5. Are comment directives acceptable in production assets, or should bounded
-   control metadata use a root namespaced/data attribute or move to an optional
-   sidecar after the first prototype?
+5. Do real optimizer-heavy workflows eventually justify replacing root comment
+   control directives with an optional sidecar or namespaced/data form?
 6. Does observed demand justify starting the separate visual editing extension
    at all? If so, its own roadmap chooses among tree/inspector, geometry, and a
    writable timeline without changing the core positioning.

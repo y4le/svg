@@ -106,10 +106,11 @@ button {
   align-self: stretch;
   display: grid;
   place-items: center;
-  width: 44px;
+  padding-inline: 13px;
   border-right: 1px solid var(--rule);
   font-weight: 650;
   letter-spacing: -0.02em;
+  white-space: nowrap;
 }
 
 .filename {

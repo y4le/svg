@@ -30,6 +30,9 @@ test("renders a mixed-animation document with browser geometry APIs", async ({
 
   await expect(page.getByRole("heading", { name: "source" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "preview" })).toBeVisible();
+  await expect(
+    page.getByText("yalethom.as/svg", { exact: true }),
+  ).toBeVisible();
   await expect(page.getByText("untitled.svg")).toBeVisible();
   await expect(page.getByTestId("document-status")).toContainText("valid");
   await expect(page.getByText(/mixed animation/i)).toBeVisible();

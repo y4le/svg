@@ -224,7 +224,7 @@ export class WorkbenchApp {
         h(
           "div",
           { className: "file-state" },
-          h("span", { className: "wordmark" }, "svg"),
+          h("span", { className: "wordmark" }, "yalethom.as/svg"),
           this.#filename,
           this.#status,
         ),

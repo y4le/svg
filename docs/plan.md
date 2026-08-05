@@ -42,6 +42,36 @@ exit described below. Animation provenance/source jumps, Inspect/Interact
 switching, pan/zoom, performance budgets, deeper instance fallbacks, and
 observed-user validation remain follow-on work.
 
+## Dev launch hardening — 2026-08-05
+
+Goal: make the ordinary Vite launcher deterministic from any working directory
+and add an explicit Tailnet launcher that uses `tailnet-dev-host` without
+claiming or replacing unrelated shared routes.
+
+Non-goals: production deployment, Tailscale Funnel, automatic removal of
+persistent Serve routes, a general process supervisor, or changes to the SVG
+document/runtime trust boundary.
+
+Affected boundaries: package scripts, one repository-owned Tailnet launcher,
+Vite's development host/port/allowed-host configuration, and the README run
+instructions. The Tailnet helper remains externally owned; this repository
+only consumes its public commands.
+
+Acceptance checks:
+
+- the ordinary launcher uses an explicit host and strict port, preserves Vite
+  argument/environment overrides, and reports a port conflict instead of
+  silently moving;
+- the Tailnet launcher preflights its dependencies and the unfiltered route
+  table, refuses to replace another owner on its dedicated HTTPS port, starts
+  Vite before exposing the root route, configures Vite's allowed host, and
+  prints the exact local and HTTPS URLs plus the matching `unexpose` command;
+- missing/offline Tailscale and conflicting-route cases fail with actionable
+  messages without starting a misleading server or changing another route;
+- shell syntax and isolated fake-helper contract tests pass, followed by
+  `npm run validate`; helper dry-run and an explicitly invoked live smoke cover
+  the root route without making shared Tailnet state part of automated tests.
+
 ## Non-goals
 
 - A general vector drawing program; that possibility has a separate extension

@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:tailnet": "bash scripts/dev-tailnet.sh",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "format": "prettier --write .",

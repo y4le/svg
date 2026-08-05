@@ -35,9 +35,25 @@ npm install
 npm run dev
 ```
 
-Then open the local URL Vite prints. The bundled mixed CSS/SMIL example is
-immediately editable; use the preview to jump to source, the bottom rail to
-tune variables, and **open** / **download** for local SVG files.
+Vite listens only on `127.0.0.1:4173` and fails instead of silently choosing a
+different port. Then open the local URL it prints. The bundled mixed CSS/SMIL
+example is immediately editable; use the preview to jump to source, the bottom
+rail to tune variables, and **open** / **download** for local SVG files.
+
+For HTTPS access from another device on the tailnet:
+
+```sh
+npm run dev:tailnet
+```
+
+This uses `tailnet-dev-host`, starts Vite on loopback, and exposes `/` on the
+dedicated Tailnet HTTPS port `4443` after refusing a live root route owned by
+another project on that port. Override the local or HTTPS port with `PORT` or
+`TAILNET_HTTPS_PORT`; pass other Vite options after `--`. The command prints the
+final URL and the exact `unexpose` command. The route intentionally persists
+after Vite stops because the shared helper does not yet provide a lease-safe
+automatic cleanup contract; inspect registered routes with
+`tailnet-dev-host status`.
 
 Validation:
 

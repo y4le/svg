@@ -6,8 +6,12 @@ The usable session MVP is complete. It has CodeMirror editing, last-known-good
 SVG rendering in a script-disabled sandbox, source ↔ rendered-element
 selection, coherent CSS/SMIL play/pause/restart/seek, exact source-backed root
 variables with authored sliders, local byte-aware open/download, and opt-in
-crash recovery. Hostile-input, animation-clock, selection, gesture, file, and
-recovery contracts run in Chromium, Firefox, and WebKit.
+crash recovery. The bundled example is named `orbit-pulse.svg`, and its
+top-rail filename is an accessible inline rename control whose metadata dirty
+state participates in download, replacement confirmation, and recovery without
+changing source bytes or CodeMirror history. Hostile-input, animation-clock,
+selection, gesture, file, filename, and recovery contracts run in Chromium,
+Firefox, and WebKit.
 
 The next work is public-quality depth rather than a missing basic loop:
 animation provenance and source jumps, Inspect/Interact switching, pan/zoom,
@@ -32,6 +36,14 @@ Final verification at `89bac50`:
 - desktop and narrow-screen visual checks were completed;
 - Opus completed two general reviews, and Fable's final focused staged-diff
   review returned `looks-good` after independently reproducing the gates.
+
+Additional verification after filename editing:
+
+- `npm run validate` passes formatting, lint, TypeScript, 39 unit tests, and the
+  production build;
+- `npm run test:browser` passes 66/66 contracts across Chromium, Firefox, and
+  WebKit, including filename cancel/validation, byte-identical renamed
+  download, dirty replacement confirmation, and filename-only recovery.
 
 Final owner direction:
 

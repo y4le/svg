@@ -38,7 +38,8 @@ npm run dev
 Vite listens only on `127.0.0.1:4173` and fails instead of silently choosing a
 different port. Then open the local URL it prints. The bundled mixed CSS/SMIL
 example is immediately editable; use the preview to jump to source, the bottom
-rail to tune variables, and **open** / **download** for local SVG files.
+rail to tune variables, the top-rail filename to rename the next download, and
+**open** / **download** for local SVG files.
 
 For HTTPS access from another device on the tailnet:
 

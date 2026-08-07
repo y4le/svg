@@ -166,6 +166,9 @@ See `docs/visual-editing-extension.md` for its staged capability ladder.
 
 - The top rail uses text labels and values before icons. File/validity/dirty
   state stays stable at left; playback and file actions stay stable at right.
+- The filename is an inline rename control for local file metadata. Renaming it
+  changes the next download name and counts as unsaved work, but does not edit
+  an authored `<title>` element or enter the source undo history.
 - The vertical split is one quiet hairline. Neither pane sits inside a card.
 - The optional bottom rail combines breadcrumb, selected-element facts, and
   variables. It can be collapsed without changing the main frame.
@@ -396,11 +399,14 @@ Do not extend into a private expression graph until evidence shows that CSS
 
 CodeMirror owns the logical editable text, while a small transport envelope
 records the originally decoded string, UTF-8 BOM presence, detected line-ending
-policy, and dirty state. Exporting an untouched document returns the original
-bytes. After an edit, uniform LF/CRLF/CR endings and BOM are preserved; mixed
-line endings are normalized deterministically after a visible one-time notice.
-This is the truthful boundary of byte fidelity because CodeMirror cannot retain
-arbitrary mixed separators in its line model.
+policy, filename, and dirty state. Source and filename changes are tracked
+separately: renaming changes transport metadata only, while either kind of
+pending change participates in replacement confirmation and recovery.
+Exporting source that is untouched returns the original bytes even when the
+filename changed. After a source edit, uniform LF/CRLF/CR endings and BOM are
+preserved; mixed line endings are normalized deterministically after a visible
+one-time notice. This is the truthful boundary of byte fidelity because
+CodeMirror cannot retain arbitrary mixed separators in its line model.
 
 Recovery persists source text and filename only after idle. On startup it is
 offered with timestamp and discard actions; it is never silently applied.

@@ -72,6 +72,31 @@ Acceptance checks:
   `npm run validate`; helper dry-run and an explicitly invoked live smoke cover
   the root route without making shared Tailnet state part of automated tests.
 
+## Document filename editing — 2026-08-05
+
+Goal: distinguish the bundled example from an unnamed blank document and let
+the user rename the current SVG from the stable top-rail filename control.
+
+Non-goals: editing the authored SVG `<title>` element, direct filesystem rename
+or save, adding a file manager, or putting filename changes in CodeMirror's
+source undo history.
+
+Affected boundaries: file-envelope metadata, dirty/replacement confirmation,
+download naming, crash recovery, and the accessible top-rail file state. SVG
+source and original-byte export remain unchanged by a filename-only edit.
+
+Acceptance checks:
+
+- the bundled mixed-animation document has a descriptive `.svg` filename;
+- the filename can be edited by pointer or keyboard, Enter or blur commits a
+  valid leaf filename, Escape cancels, and an empty value is rejected visibly;
+- a committed rename is tracked as unsaved metadata, survives recovery, and is
+  used for download without entering the source transaction or undo history;
+- opening another document asks before discarding a pending rename, while a
+  completed download establishes the new name and current source as clean;
+- browser coverage verifies rename/cancel, exact-byte download after a
+  filename-only change, replacement confirmation, and recovery.
+
 ## Non-goals
 
 - A general vector drawing program; that possibility has a separate extension

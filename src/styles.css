@@ -93,6 +93,10 @@ button:disabled {
   height: 100%;
 }
 
+.file-state {
+  min-width: 0;
+}
+
 .wordmark,
 .filename,
 .status,
@@ -116,6 +120,43 @@ button {
 .filename {
   padding-inline: 13px 9px;
   font-family: "Geist Mono Variable", "Geist Mono", monospace;
+}
+
+.filename-button {
+  max-width: min(30vw, 280px);
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.filename-input {
+  width: clamp(128px, 24vw, 280px);
+  height: 32px;
+  margin-inline: 5px;
+  padding-inline: 7px;
+  border: 0;
+  border-bottom: 1px solid var(--ink);
+  border-radius: 0;
+  color: var(--ink);
+  background: var(--surface-raised);
+}
+
+.filename-input[aria-invalid="true"] {
+  border-bottom-color: var(--accent);
+}
+
+.filename-error {
+  max-width: 230px;
+  overflow: hidden;
+  color: var(--accent);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.filename-error[hidden] {
+  display: none;
 }
 
 .status {

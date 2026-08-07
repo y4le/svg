@@ -2,6 +2,7 @@ export interface RecoveryRecord {
   readonly source: string;
   readonly baseline: string;
   readonly filename: string;
+  readonly baselineFilename?: string;
   readonly originalBytes: Uint8Array;
   readonly updatedAt: number;
 }

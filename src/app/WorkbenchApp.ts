@@ -20,6 +20,7 @@ import {
 import { createEditor } from "../editor/createEditor";
 import { DEFAULT_SVG } from "../examples/default";
 import { FileEnvelope } from "../files/FileEnvelope";
+import { normalizeSvgFilename } from "../files/filename";
 import {
   clearRecovery,
   loadRecovery,
@@ -38,6 +39,7 @@ import {
 } from "../variables/discover";
 
 const PREVIEW_DELAY = 140;
+const DEFAULT_FILENAME = "orbit-pulse.svg";
 
 function disabledSummary(validation: ValidSvg): string {
   const {
@@ -115,8 +117,13 @@ export class WorkbenchApp {
   #ignoredSlider: HTMLInputElement | null = null;
   #ignoredSliderValue = "";
   #applyingGesture = false;
-  #envelope = FileEnvelope.new("untitled.svg", DEFAULT_SVG);
-  #filename: HTMLSpanElement;
+  #envelope = FileEnvelope.new(DEFAULT_FILENAME, DEFAULT_SVG);
+  #currentFilename = DEFAULT_FILENAME;
+  #baselineFilename = DEFAULT_FILENAME;
+  #filenameButton: HTMLButtonElement;
+  #filenameInput: HTMLInputElement;
+  #filenameError: HTMLSpanElement;
+  #renaming = false;
   #sourceMeta: HTMLSpanElement;
   #fileInput: HTMLInputElement;
   #recoveryNotice: HTMLDivElement;
@@ -138,7 +145,34 @@ export class WorkbenchApp {
       "data-testid": "selection-box",
     });
     this.#breadcrumb = h("div", { className: "breadcrumb" }, "no selection");
-    this.#filename = h("span", { className: "filename" }, "untitled.svg");
+    this.#filenameButton = h(
+      "button",
+      {
+        type: "button",
+        className: "filename filename-button",
+        title: "Rename SVG file",
+        onclick: () => this.#beginFilenameEdit(),
+      },
+      DEFAULT_FILENAME,
+    );
+    this.#filenameInput = h("input", {
+      type: "text",
+      className: "filename filename-input",
+      value: DEFAULT_FILENAME,
+      hidden: true,
+      autocomplete: "off",
+      spellcheck: "false",
+      "aria-label": "SVG filename",
+      onkeydown: (event) => this.#handleFilenameKeydown(event as KeyboardEvent),
+      oninput: () => this.#clearFilenameError(),
+      onblur: () => this.#commitFilenameEdit(false),
+    });
+    this.#filenameError = h("span", {
+      className: "filename-error",
+      role: "alert",
+      hidden: true,
+    });
+    this.#renderFilename();
     this.#sourceMeta = h("span", {
       className: "pane-meta",
       textContent: "XML · source of truth",
@@ -225,7 +259,9 @@ export class WorkbenchApp {
           "div",
           { className: "file-state" },
           h("span", { className: "wordmark" }, "yalethom.as/svg"),
-          this.#filename,
+          this.#filenameButton,
+          this.#filenameInput,
+          this.#filenameError,
           this.#status,
         ),
         h(
@@ -335,7 +371,7 @@ export class WorkbenchApp {
     this.#index = null;
     this.#alignment = null;
     this.#hideSelectionBox();
-    this.#dirty = source !== this.#baselineSource;
+    this.#syncDirtyState();
     this.#status.textContent = this.#dirty ? "checking · changed" : "checking";
     this.#status.classList.remove("status-error");
     if (this.#gesture && !this.#applyingGesture) {
@@ -825,6 +861,109 @@ export class WorkbenchApp {
     return variable ? { index, variable } : null;
   }
 
+  #beginFilenameEdit(): void {
+    this.#clearFilenameError();
+    this.#renaming = true;
+    this.#filenameButton.hidden = true;
+    this.#filenameInput.hidden = false;
+    this.#filenameInput.value = this.#currentFilename;
+    this.#filenameInput.focus();
+    const extension = this.#currentFilename.toLowerCase().endsWith(".svg")
+      ? this.#currentFilename.length - 4
+      : this.#currentFilename.length;
+    this.#filenameInput.setSelectionRange(0, extension);
+  }
+
+  #handleFilenameKeydown(event: KeyboardEvent): void {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      this.#commitFilenameEdit(true);
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      this.#cancelFilenameEdit();
+    }
+  }
+
+  #commitFilenameEdit(focusButton: boolean): void {
+    if (!this.#renaming) return;
+    const filename = normalizeSvgFilename(this.#filenameInput.value);
+    if (!filename) {
+      this.#showFilenameError(
+        "Use a non-empty filename without path or reserved characters.",
+      );
+      if (focusButton) {
+        this.#filenameInput.focus();
+        this.#filenameInput.select();
+      } else {
+        this.#endFilenameEdit(false);
+      }
+      return;
+    }
+
+    const previous = this.#currentFilename;
+    this.#currentFilename = filename;
+    this.#clearFilenameError();
+    this.#endFilenameEdit(focusButton);
+    this.#renderFilename();
+    this.#syncDirtyState();
+    this.#renderDirtyStatus();
+    this.#scheduleRecovery();
+    if (filename !== previous) this.#announce(`Renamed to ${filename}.`);
+  }
+
+  #cancelFilenameEdit(): void {
+    if (!this.#renaming) return;
+    this.#clearFilenameError();
+    this.#endFilenameEdit(true);
+    this.#announce("Filename edit cancelled.");
+  }
+
+  #endFilenameEdit(focusButton: boolean): void {
+    this.#renaming = false;
+    this.#filenameInput.hidden = true;
+    this.#filenameInput.value = this.#currentFilename;
+    this.#filenameButton.hidden = false;
+    if (focusButton) this.#filenameButton.focus();
+  }
+
+  #renderFilename(): void {
+    this.#filenameButton.textContent = this.#currentFilename;
+    this.#filenameButton.setAttribute(
+      "aria-label",
+      `Rename ${this.#currentFilename}`,
+    );
+    if (!this.#renaming) this.#filenameInput.value = this.#currentFilename;
+  }
+
+  #showFilenameError(message: string): void {
+    this.#filenameInput.setAttribute("aria-invalid", "true");
+    this.#filenameInput.setAttribute("aria-describedby", "filename-error");
+    this.#filenameError.id = "filename-error";
+    this.#filenameError.textContent = message;
+    this.#filenameError.hidden = false;
+  }
+
+  #clearFilenameError(): void {
+    this.#filenameInput.removeAttribute("aria-invalid");
+    this.#filenameInput.removeAttribute("aria-describedby");
+    this.#filenameError.textContent = "";
+    this.#filenameError.hidden = true;
+  }
+
+  #syncDirtyState(): void {
+    this.#dirty =
+      this.#source !== this.#baselineSource ||
+      this.#currentFilename !== this.#baselineFilename;
+  }
+
+  #renderDirtyStatus(): void {
+    const status = (this.#status.textContent || "checking").replace(
+      / · changed$/u,
+      "",
+    );
+    this.#status.textContent = this.#dirty ? `${status} · changed` : status;
+  }
+
   async #openSelectedFile(event: Event): Promise<void> {
     const input = event.currentTarget as HTMLInputElement;
     const file = input.files?.[0];
@@ -847,10 +986,18 @@ export class WorkbenchApp {
     }
   }
 
-  #loadEnvelope(envelope: FileEnvelope, source: string): void {
+  #loadEnvelope(
+    envelope: FileEnvelope,
+    source: string,
+    filename = envelope.filename,
+  ): void {
     this.#envelope = envelope;
     this.#baselineSource = envelope.source;
-    this.#filename.textContent = envelope.filename;
+    this.#baselineFilename = envelope.filename;
+    this.#currentFilename = filename;
+    this.#clearFilenameError();
+    this.#endFilenameEdit(false);
+    this.#renderFilename();
     this.#sourceMeta.textContent = envelope.mixedLineEndings
       ? "XML · mixed EOL → LF after edit"
       : "XML · source of truth";
@@ -859,6 +1006,9 @@ export class WorkbenchApp {
       selection: EditorSelection.cursor(0),
       annotations: Transaction.addToHistory.of(false),
     });
+    this.#syncDirtyState();
+    this.#renderDirtyStatus();
+    this.#scheduleRecovery();
   }
 
   #download(): void {
@@ -867,15 +1017,15 @@ export class WorkbenchApp {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = this.#filename.textContent || "untitled.svg";
+    link.download = this.#currentFilename;
     link.click();
     URL.revokeObjectURL(url);
 
     this.#envelope = FileEnvelope.fromBytes(link.download, bytes);
     this.#baselineSource = this.#source;
-    this.#dirty = false;
-    if (this.#status.textContent?.startsWith("valid"))
-      this.#status.textContent = "valid";
+    this.#baselineFilename = this.#currentFilename;
+    this.#syncDirtyState();
+    this.#renderDirtyStatus();
     void clearRecovery();
     this.#announce(`${link.download} downloaded.`);
   }
@@ -890,7 +1040,8 @@ export class WorkbenchApp {
       void saveRecovery({
         source: this.#source,
         baseline: this.#baselineSource,
-        filename: this.#filename.textContent || "untitled.svg",
+        filename: this.#currentFilename,
+        baselineFilename: this.#baselineFilename,
         originalBytes: this.#envelope.export(this.#envelope.source),
         updatedAt: Date.now(),
       });
@@ -899,7 +1050,14 @@ export class WorkbenchApp {
 
   async #offerRecovery(): Promise<void> {
     const recovery = await loadRecovery().catch(() => undefined);
-    if (!recovery || recovery.source === this.#source) return;
+    if (!recovery) return;
+    const baselineFilename = recovery.baselineFilename ?? recovery.filename;
+    if (
+      recovery.source === recovery.baseline &&
+      recovery.filename === baselineFilename
+    ) {
+      return;
+    }
     const age = new Date(recovery.updatedAt).toLocaleString();
     this.#recoveryNotice.hidden = false;
     this.#recoveryNotice.replaceChildren(
@@ -920,11 +1078,11 @@ export class WorkbenchApp {
   #restoreRecovery(recovery: RecoveryRecord): void {
     if (!this.#confirmReplace(`restore ${recovery.filename}`)) return;
     const envelope = FileEnvelope.fromBytes(
-      recovery.filename,
+      recovery.baselineFilename ?? recovery.filename,
       recovery.originalBytes,
     );
     this.#recoveryNotice.hidden = true;
-    this.#loadEnvelope(envelope, recovery.source);
+    this.#loadEnvelope(envelope, recovery.source, recovery.filename);
     this.#announce("Unsaved SVG restored.");
   }
 

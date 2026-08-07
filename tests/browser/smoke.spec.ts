@@ -33,7 +33,9 @@ test("renders a mixed-animation document with browser geometry APIs", async ({
   await expect(
     page.getByText("yalethom.as/svg", { exact: true }),
   ).toBeVisible();
-  await expect(page.getByText("untitled.svg")).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Rename orbit-pulse.svg" }),
+  ).toBeVisible();
   await expect(page.getByTestId("document-status")).toContainText("valid");
   await expect(page.getByText(/mixed animation/i)).toBeVisible();
   await expect(
@@ -537,7 +539,37 @@ test("seeks CSS and SMIL to one inspection time", async ({ page }) => {
   expect(clocks.css).toBeCloseTo(1.5, 1);
 });
 
-test("opens and downloads an untouched SVG with exact original bytes", async ({
+test("renames the bundled example and cancels or rejects invalid names", async ({
+  page,
+}) => {
+  await page.goto("/");
+
+  await page.getByRole("button", { name: "Rename orbit-pulse.svg" }).click();
+  const filename = page.getByRole("textbox", { name: "SVG filename" });
+  await filename.fill("discarded");
+  await filename.press("Escape");
+  await expect(
+    page.getByRole("button", { name: "Rename orbit-pulse.svg" }),
+  ).toBeVisible();
+  await expect(page.getByTestId("document-status")).toHaveText("valid");
+
+  await page.getByRole("button", { name: "Rename orbit-pulse.svg" }).click();
+  await filename.fill("");
+  await filename.press("Enter");
+  await expect(filename).toHaveAttribute("aria-invalid", "true");
+  await expect(page.getByRole("alert")).toContainText("non-empty filename");
+  await filename.fill("named-example");
+  await filename.press("Enter");
+
+  await expect(
+    page.getByRole("button", { name: "Rename named-example.svg" }),
+  ).toBeVisible();
+  await expect(page.getByTestId("document-status")).toHaveText(
+    "valid · changed",
+  );
+});
+
+test("opens, renames, and downloads an untouched SVG with exact original bytes", async ({
   page,
 }) => {
   const source =
@@ -554,14 +586,50 @@ test("opens and downloads an untouched SVG with exact original bytes", async ({
   });
   await expect(page.getByText("exact.svg", { exact: true })).toBeVisible();
   await expect(page.getByTestId("document-status")).toHaveText("valid");
+  await page.getByRole("button", { name: "Rename exact.svg" }).click();
+  await page.getByRole("textbox", { name: "SVG filename" }).fill("renamed");
+  await page.getByRole("textbox", { name: "SVG filename" }).press("Enter");
+  await expect(page.getByTestId("document-status")).toHaveText(
+    "valid · changed",
+  );
 
   const [download] = await Promise.all([
     page.waitForEvent("download"),
     page.getByRole("button", { name: "download" }).click(),
   ]);
-  expect(download.suggestedFilename()).toBe("exact.svg");
+  expect(download.suggestedFilename()).toBe("renamed.svg");
   const path = await download.path();
   expect(await readFile(path)).toEqual(original);
+  await expect(page.getByTestId("document-status")).toHaveText("valid");
+});
+
+test("does not discard an unsaved filename change without confirmation", async ({
+  page,
+}) => {
+  const replacement = `<svg xmlns="${SVG_NAMESPACE}" viewBox="0 0 10 10"><rect width="10" height="10" /></svg>`;
+  await page.goto("/");
+  await page.getByRole("button", { name: "Rename orbit-pulse.svg" }).click();
+  await page.getByRole("textbox", { name: "SVG filename" }).fill("pending");
+  await page.getByRole("textbox", { name: "SVG filename" }).press("Tab");
+  await expect(
+    page.getByRole("button", { name: "Rename pending.svg" }),
+  ).toBeVisible();
+
+  let prompt = "";
+  page.once("dialog", async (dialog) => {
+    prompt = dialog.message();
+    await dialog.dismiss();
+  });
+  await page.getByLabel("Open SVG file").setInputFiles({
+    name: "replacement.svg",
+    mimeType: "image/svg+xml",
+    buffer: Buffer.from(replacement),
+  });
+
+  expect(prompt).toContain("unsaved changes");
+  await expect(
+    page.getByRole("button", { name: "Rename pending.svg" }),
+  ).toBeVisible();
 });
 
 test("does not replace unsaved work without confirmation", async ({ page }) => {
@@ -585,7 +653,9 @@ test("does not replace unsaved work without confirmation", async ({ page }) => {
   });
 
   expect(prompt).toContain("unsaved changes");
-  await expect(page.getByText("untitled.svg", { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Rename orbit-pulse.svg" }),
+  ).toBeVisible();
   await expect(page.locator(".cm-content")).toContainText('id="keep-me"');
 });
 
@@ -601,11 +671,36 @@ test("offers unsaved recovery and restores it only after confirmation", async ({
   await page.waitForTimeout(500);
 
   await page.reload();
-  await expect(page.getByText(/Unsaved untitled\.svg/)).toBeVisible();
+  await expect(page.getByText(/Unsaved orbit-pulse\.svg/)).toBeVisible();
   await expect(page.locator(".cm-content")).not.toContainText('id="recovered"');
   await page.getByRole("button", { name: "restore" }).click();
   await expect(page.locator(".cm-content")).toContainText('id="recovered"');
   await expect(page.getByTestId("document-status")).toContainText(
+    "valid · changed",
+  );
+});
+
+test("recovers a filename-only change as unsaved metadata", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Rename orbit-pulse.svg" }).click();
+  await page
+    .getByRole("textbox", { name: "SVG filename" })
+    .fill("recovered-name");
+  await page.getByRole("textbox", { name: "SVG filename" }).press("Enter");
+  await expect(page.getByTestId("document-status")).toHaveText(
+    "valid · changed",
+  );
+  await page.waitForTimeout(500);
+
+  await page.reload();
+  await expect(page.getByText(/Unsaved recovered-name\.svg/)).toBeVisible();
+  await page.getByRole("button", { name: "restore" }).click();
+  await expect(
+    page.getByRole("button", { name: "Rename recovered-name.svg" }),
+  ).toBeVisible();
+  await expect(page.getByTestId("document-status")).toHaveText(
     "valid · changed",
   );
 });

@@ -125,6 +125,32 @@ Acceptance checks:
 - YAML parsing, SVG portability checks, repository formatting, and the normal
   validation gate pass.
 
+## GitHub Pages publication — 2026-08-07
+
+Goal: publish the validated workbench automatically at
+`https://yalethom.as/svg/` after a push to `main`.
+
+Non-goals: changing the user site's custom-domain or DNS configuration,
+committing generated build output, preview deployments for pull requests, or
+introducing a second release branch.
+
+Affected boundaries: the npm build surface, one GitHub Actions workflow, the
+`y4le/svg` repository and Pages environment, and public run instructions. The
+user site remains the sole owner of the `yalethom.as` custom domain.
+
+Acceptance checks:
+
+- the private `y4le/svg` repository uses this local `main` branch and SSH
+  remote as its publication source;
+- the Pages workflow runs the standard validation gate, creates a `/svg/`
+  Vite build, rejects accidental root-relative asset URLs, and uploads only
+  `dist`;
+- deployment uses the `github-pages` environment and only the documented
+  `contents: read`, `pages: write`, and `id-token: write` permissions;
+- the local Pages build serves its entry point and assets beneath `/svg/`;
+- the first pushed workflow succeeds and `https://yalethom.as/svg/` serves the
+  workbench through the custom domain inherited from `y4le/y4le.github.io`.
+
 ## Non-goals
 
 - A general vector drawing program; that possibility has a separate extension

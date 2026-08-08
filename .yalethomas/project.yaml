@@ -1,0 +1,18 @@
+schema: 1
+title: svg
+description: A source-first browser workbench for inspecting and tuning SVG without surrendering the code.
+bullets:
+  - Links each element to its rendered geometry in both directions.
+  - Pauses, restarts, and seeks native CSS and SMIL animation.
+  - Turns authored CSS custom properties into exact, source-backed controls.
+date:
+  start: "2026-08"
+  end: "present"
+link: https://yalethom.as/svg/
+type: tool
+tags:
+  - SVG
+  - animation
+  - source editing
+  - TypeScript
+svg: .yalethomas/card.svg

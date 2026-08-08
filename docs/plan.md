@@ -97,6 +97,34 @@ Acceptance checks:
 - browser coverage verifies rename/cancel, exact-byte download after a
   filename-only change, replacement confirmation, and recovery.
 
+## Project publishing metadata — 2026-08-07
+
+Goal: make this repository an authoritative input to the `yalethom.as`
+project index by adopting the shared project manifest and artwork contract.
+
+Non-goals: changing the workbench UI or runtime behavior, adding landing-page
+curation to this repository, or introducing a separate marketing identity.
+
+Affected boundaries: repository-owned public metadata and one self-contained
+SVG card asset under `.yalethomas/`. Product source, preview security, and
+export behavior remain unchanged.
+
+Acceptance checks:
+
+- `.yalethomas/project.yaml` contains exactly the schema 1 fields, uses the
+  established `yalethom.as/svg` identity, and makes only repository-supported
+  claims;
+- the canonical link is `https://yalethom.as/svg/`, dates preserve the
+  repository's known month precision, and ordered tags and bullets remain
+  plain text;
+- `.yalethomas/card.svg` is self-contained, titled `svg`, uses a transparent
+  `1618 × 1000` frame, and communicates the direct source-to-render animation
+  loop on the standard warm-dark card surface;
+- declarative motion begins at time zero, has a complete still frame, and is
+  disabled by reduced-motion preferences;
+- YAML parsing, SVG portability checks, repository formatting, and the normal
+  validation gate pass.
+
 ## Non-goals
 
 - A general vector drawing program; that possibility has a separate extension

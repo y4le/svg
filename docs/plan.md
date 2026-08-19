@@ -183,6 +183,40 @@ Acceptance checks:
   labels; the bundled, long-SMIL, static, unresolved, and replacement cases
   pass in Chromium, Firefox, and WebKit.
 
+## Keyboard preview inspection and resize-stable overlay — 2026-08-19
+
+Goal: complete the preview-to-source loop for keyboard and assistive-technology
+users, and keep its host-owned selection outline aligned when a paused preview
+stage resizes.
+
+Non-goals: a persistent structure panel, collapsible tree semantics, spatial
+arrow-key navigation, pointer Interact mode, or moving overlay geometry into the
+SVG document.
+
+Affected boundaries: `WorkbenchApp` owns a focusable virtualized listbox over
+the version-bound `SourceIndex`/`PreviewAlignment`, separates source following
+from focus handoff, and observes its preview stage through an animation-frame
+coalesced `ResizeObserver`. `PreviewSession` only removes the redundant iframe
+tab stop. Source mapping and SVG content remain unchanged.
+
+Acceptance checks:
+
+- the preview inspector is one keyboard stop with a valid active-option proxy,
+  position/set size, and visible focus; Escape then Tab reaches it from the
+  Tab-indenting source editor, and the sandbox iframe is not a second stop;
+- Up/Down/Home/End walk mapped elements in authored document order, parent
+  navigation mirrors Shift-click, and each landing updates source selection and
+  breadcrumb without taking focus from the inspector;
+- Enter explicitly hands focus to the selected source tag; mapped elements with
+  no rendered geometry remain reachable, say so, and never draw a zero-size box;
+- unavailable or stale mapping is announced rather than silently ignoring
+  keyboard input, while the active option supplies a single landing
+  announcement without duplicate live-region speech;
+- resizing the paused preview stage schedules one post-layout geometry update,
+  and `destroy()` disconnects the observer and cancels its pending frame;
+- focus, structural walking, source handoff, non-geometric selection, and exact
+  post-resize overlay alignment pass in Chromium, Firefox, and WebKit.
+
 ## Non-goals
 
 - A general vector drawing program; that possibility has a separate extension

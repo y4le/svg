@@ -85,6 +85,8 @@ interface VariableGesture {
   final: string;
 }
 
+type SourceReveal = "none" | "follow" | "handoff";
+
 export class WorkbenchApp {
   readonly root: HTMLElement;
   readonly editor: EditorView;
@@ -110,8 +112,14 @@ export class WorkbenchApp {
   #index: SourceIndex | null = null;
   #alignment: PreviewAlignment | null = null;
   #selectedId: number | null = null;
+  #selectedVersion = -1;
   #inspector: HTMLDivElement;
+  #previewOption: HTMLDivElement;
+  #navigableElements: readonly SourceElement[] = [];
+  #syncingSelection = false;
   #selectionBox: HTMLDivElement;
+  #resizeObserver: ResizeObserver;
+  #geometryFrame: number | undefined;
   #breadcrumb: HTMLDivElement;
   #controls: HTMLDivElement;
   #scrubber: HTMLInputElement;
@@ -134,12 +142,32 @@ export class WorkbenchApp {
   constructor(mount: HTMLElement) {
     const editorHost = h("div", { className: "editor-host" });
     const previewStage = h("div", { className: "preview-stage" });
-    this.#inspector = h("div", {
-      className: "preview-inspector",
-      role: "region",
-      "aria-label": "Rendered SVG inspector",
-      onclick: (event) => this.#inspectPreview(event as MouseEvent),
+    const inspectorHelp = h(
+      "span",
+      { className: "sr-only", id: "preview-inspector-help" },
+      "Use Up and Down to move through rendered elements, Home and End to jump, Left or Shift plus Up to select a parent, Right to select its first child, and Enter to focus the source.",
+    );
+    this.#previewOption = h("div", {
+      className: "preview-option sr-only",
+      role: "option",
+      "aria-selected": "true",
     });
+    this.#inspector = h(
+      "div",
+      {
+        className: "preview-inspector",
+        role: "listbox",
+        tabindex: 0,
+        "aria-label": "Rendered elements",
+        "aria-describedby": "preview-inspector-help",
+        "aria-orientation": "vertical",
+        onclick: (event) => this.#inspectPreview(event as MouseEvent),
+        onfocus: () => this.#focusInspector(),
+        onkeydown: (event) =>
+          this.#handleInspectorKeydown(event as KeyboardEvent),
+      },
+      this.#previewOption,
+    );
     this.#selectionBox = h("div", {
       className: "selection-box",
       hidden: true,
@@ -345,6 +373,7 @@ export class WorkbenchApp {
         this.#controls,
       ),
       this.#liveRegion,
+      inspectorHelp,
       this.#fileInput,
       this.#recoveryNotice,
     );
@@ -355,6 +384,10 @@ export class WorkbenchApp {
       onPlaybackChange: (state) => this.#renderPlayback(state),
     });
     previewStage.append(this.#inspector, this.#selectionBox);
+    this.#resizeObserver = new ResizeObserver(() =>
+      this.#scheduleSelectionGeometry(),
+    );
+    this.#resizeObserver.observe(previewStage);
     this.editor = createEditor({
       parent: editorHost,
       document: this.#source,
@@ -369,6 +402,8 @@ export class WorkbenchApp {
     window.clearTimeout(this.#previewTimer);
     window.clearTimeout(this.#recoveryTimer);
     window.cancelAnimationFrame(this.#clockFrame ?? 0);
+    window.cancelAnimationFrame(this.#geometryFrame ?? 0);
+    this.#resizeObserver.disconnect();
     this.editor.destroy();
     this.preview.destroy();
   }
@@ -378,6 +413,8 @@ export class WorkbenchApp {
     this.#version += 1;
     this.#index = null;
     this.#alignment = null;
+    this.#navigableElements = [];
+    this.#syncPreviewOption(null, false);
     this.#hideSelectionBox();
     this.#syncDirtyState();
     this.#status.textContent = this.#dirty ? "checking · changed" : "checking";
@@ -522,14 +559,26 @@ export class WorkbenchApp {
   #alignPreview(index: SourceIndex): void {
     const root = this.preview.root;
     this.#alignment = root ? alignPreviewElements(index, root) : null;
+    this.#navigableElements = this.#alignment
+      ? index.elements.filter((element) =>
+          this.#alignment?.byId.has(element.id),
+        )
+      : [];
     if (!this.#alignment?.complete) {
       this.#announce("Some preview elements could not be linked to source.");
+    }
+    if (this.#selectedVersion === this.#version) {
+      this.#refreshSelectionPresentation();
+    } else {
+      this.#hideSelectionBox();
+      this.#syncPreviewOption(null, false);
     }
   }
 
   #selectFromSource(position: number): void {
+    if (this.#syncingSelection) return;
     const element = this.#index?.deepestAt(position);
-    if (element) this.#selectElement(element, false);
+    if (element) this.#selectElement(element, "none");
   }
 
   #inspectPreview(event: MouseEvent): void {
@@ -546,26 +595,125 @@ export class WorkbenchApp {
     if (!sourceElement) return;
     if (event.shiftKey)
       sourceElement = this.#index.parent(sourceElement) ?? sourceElement;
-    this.#selectElement(sourceElement, true);
+    this.#selectElement(sourceElement, "handoff");
   }
 
-  #selectElement(element: SourceElement, revealSource: boolean): void {
+  #selectElement(element: SourceElement, reveal: SourceReveal): void {
     if (!this.#index) return;
+    const changed =
+      this.#selectedId !== element.id ||
+      this.#selectedVersion !== this.#version;
     this.#selectedId = element.id;
-    if (revealSource) {
-      this.editor.dispatch({
-        selection: EditorSelection.range(
-          element.tagNameRange.from,
-          element.tagNameRange.to,
-        ),
-        effects: EditorView.scrollIntoView(element.openTagRange.from, {
-          y: "center",
-        }),
-      });
-      this.editor.focus();
+    this.#selectedVersion = this.#version;
+    if (reveal !== "none") {
+      this.#syncingSelection = true;
+      try {
+        this.editor.dispatch({
+          selection: EditorSelection.range(
+            element.tagNameRange.from,
+            element.tagNameRange.to,
+          ),
+          effects: EditorView.scrollIntoView(element.openTagRange.from, {
+            y: reveal === "handoff" ? "center" : "nearest",
+          }),
+        });
+      } finally {
+        this.#syncingSelection = false;
+      }
+      if (reveal === "handoff") this.editor.focus();
     }
-    this.#renderBreadcrumb(element);
-    this.#updateSelectionBox();
+    if (changed) this.#renderBreadcrumb(element);
+    this.#refreshSelectionPresentation();
+  }
+
+  #focusInspector(): void {
+    if (!this.#inspectorIsAvailable()) return;
+    const selected =
+      this.#selectedId === null
+        ? null
+        : this.#navigableElements.find(
+            (element) => element.id === this.#selectedId,
+          );
+    const target = selected ?? this.#navigableElements[0];
+    if (selected) this.#refreshSelectionPresentation();
+    else if (target) this.#selectElement(target, "follow");
+  }
+
+  #handleInspectorKeydown(event: KeyboardEvent): void {
+    if (event.altKey || event.ctrlKey || event.metaKey) return;
+    const handled = [
+      "ArrowDown",
+      "ArrowUp",
+      "ArrowLeft",
+      "ArrowRight",
+      "Home",
+      "End",
+      "Enter",
+    ].includes(event.key);
+    if (!handled) return;
+    event.preventDefault();
+    if (!this.#inspectorIsAvailable()) return;
+
+    const currentPosition = this.#navigableElements.findIndex(
+      (element) => element.id === this.#selectedId,
+    );
+    const current = this.#navigableElements[currentPosition] ?? null;
+    if (event.key === "Enter") {
+      if (current) this.#selectElement(current, "handoff");
+      return;
+    }
+
+    let target: SourceElement | undefined;
+    if (event.key === "Home") target = this.#navigableElements[0];
+    else if (event.key === "End") target = this.#navigableElements.at(-1);
+    else if (event.key === "ArrowDown") {
+      target = this.#navigableElements[currentPosition + 1];
+      if (!target) this.#announce("Last mapped element.");
+    } else if (event.key === "ArrowUp" && !event.shiftKey) {
+      target = this.#navigableElements[currentPosition - 1];
+      if (!target) this.#announce("First mapped element.");
+    } else if (
+      (event.key === "ArrowUp" && event.shiftKey) ||
+      event.key === "ArrowLeft"
+    ) {
+      target = current ? this.#mappedParent(current) : undefined;
+      if (!target) this.#announce("This element has no authored parent.");
+    } else if (event.key === "ArrowRight") {
+      target = current
+        ? this.#navigableElements.find(
+            (element) => element.parentId === current.id,
+          )
+        : undefined;
+      if (!target) this.#announce("This element has no authored child.");
+    }
+    if (target && this.#alignment?.byId.has(target.id)) {
+      this.#selectElement(target, "follow");
+    }
+  }
+
+  #inspectorIsAvailable(): boolean {
+    if (
+      this.#stale ||
+      !this.#index ||
+      !this.#alignment ||
+      this.#navigableElements.length === 0
+    ) {
+      this.#announce(
+        this.#stale
+          ? "Preview is held at the last valid source; selection is unavailable."
+          : "Preview selection is unavailable while source mapping updates.",
+      );
+      return false;
+    }
+    return true;
+  }
+
+  #mappedParent(element: SourceElement): SourceElement | undefined {
+    let parent = this.#index?.parent(element) ?? null;
+    while (parent && !this.#alignment?.byId.has(parent.id)) {
+      parent = this.#index?.parent(parent) ?? null;
+    }
+    return parent ?? undefined;
   }
 
   #renderBreadcrumb(element: SourceElement): void {
@@ -575,41 +723,88 @@ export class WorkbenchApp {
       .ancestors(element)
       .entries()) {
       if (position) children.push(document.createTextNode("›"));
-      const id = ancestor.attributes.get("id")?.value;
-      const className = ancestor.attributes
-        .get("class")
-        ?.value?.split(/\s+/)[0];
-      const label = `${ancestor.name}${id ? `#${id}` : className ? `.${className}` : ""}`;
       children.push(
         h(
           "button",
           {
             type: "button",
             className: "breadcrumb-link",
-            onclick: () => this.#selectElement(ancestor, true),
+            onclick: () => this.#selectElement(ancestor, "handoff"),
           },
-          label,
+          this.#sourceElementLabel(ancestor),
         ),
       );
     }
     this.#breadcrumb.replaceChildren(...children);
   }
 
-  #updateSelectionBox(): void {
+  #sourceElementLabel(element: SourceElement): string {
+    const id = element.attributes.get("id")?.value;
+    const className = element.attributes.get("class")?.value?.split(/\s+/)[0];
+    return `${element.name}${id ? `#${id}` : className ? `.${className}` : ""}`;
+  }
+
+  #refreshSelectionPresentation(): void {
+    const element =
+      this.#selectedId === null ? null : this.#index?.element(this.#selectedId);
+    const hasGeometry = this.#updateSelectionBox();
+    this.#syncPreviewOption(element ?? null, hasGeometry);
+  }
+
+  #syncPreviewOption(
+    element: SourceElement | null,
+    hasGeometry: boolean,
+  ): void {
+    const position = element
+      ? this.#navigableElements.findIndex(
+          (candidate) => candidate.id === element.id,
+        )
+      : -1;
+    if (!element || position < 0) {
+      this.#inspector.removeAttribute("aria-activedescendant");
+      this.#previewOption.removeAttribute("id");
+      this.#previewOption.removeAttribute("aria-posinset");
+      this.#previewOption.removeAttribute("aria-setsize");
+      this.#previewOption.setAttribute("aria-selected", "false");
+      this.#previewOption.textContent = "";
+      return;
+    }
+
+    const optionId = `preview-option-${this.#version}-${element.id}`;
+    this.#previewOption.id = optionId;
+    this.#previewOption.setAttribute("aria-selected", "true");
+    this.#previewOption.setAttribute("aria-posinset", String(position + 1));
+    this.#previewOption.setAttribute(
+      "aria-setsize",
+      String(this.#navigableElements.length),
+    );
+    this.#previewOption.textContent = `${this.#sourceElementLabel(element)}${hasGeometry ? "" : ", no rendered geometry"}`;
+    this.#inspector.setAttribute("aria-activedescendant", optionId);
+  }
+
+  #scheduleSelectionGeometry(): void {
+    if (this.#geometryFrame !== undefined) return;
+    this.#geometryFrame = window.requestAnimationFrame(() => {
+      this.#geometryFrame = undefined;
+      this.#refreshSelectionPresentation();
+    });
+  }
+
+  #updateSelectionBox(): boolean {
     const previewElement =
       this.#selectedId === null
         ? null
         : this.#alignment?.byId.get(this.#selectedId);
     if (!previewElement) {
       this.#hideSelectionBox();
-      return;
+      return false;
     }
     const elementRect = previewElement.getBoundingClientRect();
     const iframeRect = this.preview.iframe.getBoundingClientRect();
     const stageRect = this.#inspector.parentElement?.getBoundingClientRect();
     if (!stageRect || elementRect.width <= 0 || elementRect.height <= 0) {
       this.#hideSelectionBox();
-      return;
+      return false;
     }
     this.#selectionBox.hidden = false;
     Object.assign(this.#selectionBox.style, {
@@ -618,6 +813,7 @@ export class WorkbenchApp {
       width: `${elementRect.width}px`,
       height: `${elementRect.height}px`,
     });
+    return true;
   }
 
   #hideSelectionBox(): void {

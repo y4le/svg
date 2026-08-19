@@ -3,15 +3,15 @@
 ## State at handoff
 
 The usable session MVP is complete. It has CodeMirror editing, last-known-good
-SVG rendering in a script-disabled sandbox, source ↔ rendered-element
-selection, coherent CSS/SMIL play/pause/restart/seek, exact source-backed root
-variables with authored sliders, local byte-aware open/download, and opt-in
-crash recovery. The bundled example is named `orbit-pulse.svg`, and its
-top-rail filename is an accessible inline rename control whose metadata dirty
-state participates in download, replacement confirmation, and recovery without
-changing source bytes or CodeMirror history. Hostile-input, animation-clock,
-selection, gesture, file, filename, and recovery contracts run in Chromium,
-Firefox, and WebKit.
+SVG rendering in a script-disabled sandbox, pointer and keyboard source ↔
+rendered-element selection, coherent CSS/SMIL play/pause/restart/seek, exact
+source-backed root variables with authored sliders, local byte-aware
+open/download, and opt-in crash recovery. The bundled example is named
+`orbit-pulse.svg`, and its top-rail filename is an accessible inline rename
+control whose metadata dirty state participates in download, replacement
+confirmation, and recovery without changing source bytes or CodeMirror
+history. Hostile-input, animation-clock, selection, gesture, file, filename,
+and recovery contracts run in Chromium, Firefox, and WebKit.
 
 The next work is public-quality depth rather than a missing basic loop:
 animation provenance and source jumps, Inspect/Interact switching, pan/zoom,

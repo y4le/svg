@@ -181,6 +181,15 @@ See `docs/visual-editing-extension.md` for its staged capability ladder.
   authored element that owns that range.
 - Preview click selects the deepest mapped authored element and reveals the
   opening tag without selecting a huge multi-line subtree.
+- The preview inspector is one keyboard composite over mapped authored
+  elements. Up/Down and Home/End walk document order while source selection
+  follows without stealing focus; parent/child navigation preserves the
+  authored hierarchy, and Enter hands focus to the selected opening tag.
+  CodeMirror keeps Tab for indentation, so Escape then Tab crosses from source
+  into the inspector without editing the document.
+  Parent-document proxy options expose the active item because iframe nodes
+  cannot be ARIA descendants. Mapped elements without rendered geometry remain
+  reachable and say why no outline is shown.
 - Shift-click climbs one authored ancestor. `Enter` or a textual "reference"
   action on `use` follows its `href` definition; Back returns to the instance.
 - Hover may ghost the linked range/element, but committed selection uses the
@@ -520,6 +529,8 @@ prove one end-to-end variable or animation command.
 - Preview-only nodes never enter the source map.
 - Selection restoration uses a structural anchor (expanded name, authored
   ancestry, sibling ordinal, optional `id`) and may honestly fail after edits.
+- Host selection geometry is refreshed after preview-stage resize on the next
+  animation frame, when both the parent layout and iframe layout have settled.
 
 ### Source-mutation contract
 

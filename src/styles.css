@@ -290,6 +290,10 @@ button {
   cursor: crosshair;
 }
 
+.preview-option {
+  pointer-events: none;
+}
+
 .selection-box {
   position: absolute;
   z-index: 2;

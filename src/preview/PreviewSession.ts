@@ -58,6 +58,7 @@ export class PreviewSession {
     this.iframe = document.createElement("iframe");
     this.iframe.className = "preview-frame";
     this.iframe.title = "Rendered SVG preview";
+    this.iframe.tabIndex = -1;
     this.iframe.setAttribute("sandbox", "allow-same-origin");
     this.iframe.srcdoc = TRUSTED_SHELL;
     this.#ready = new Promise((resolve) => {

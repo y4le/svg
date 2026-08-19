@@ -498,6 +498,124 @@ test("links source positions and rendered elements through one selection", async
   await expect(page.locator(".breadcrumb")).toContainText("svg›g#orbit");
 });
 
+test("walks rendered elements by keyboard and hands focus back to source", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await expect(page.getByTestId("document-status")).toHaveText("valid");
+  await page.getByRole("button", { name: "Pause animation" }).click();
+
+  const inspector = page.getByRole("listbox", { name: "Rendered elements" });
+  const option = page.getByRole("option");
+  await expect(inspector).toHaveAttribute("tabindex", "0");
+  await expect(page.locator("iframe")).toHaveAttribute("tabindex", "-1");
+  await page.locator(".cm-content").focus();
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Tab");
+  await expect(inspector).toBeFocused();
+  await expect(inspector).toHaveCSS("outline-style", "solid");
+  await expect(option).toHaveAttribute("aria-posinset", "1");
+  await expect(option).toHaveAttribute("aria-setsize", "8");
+
+  await inspector.press("End");
+  await expect(option).toHaveAttribute("aria-posinset", "8");
+  await inspector.press("Home");
+  await expect(option).toHaveAttribute("aria-posinset", "1");
+
+  await inspector.press("ArrowDown");
+  await expect(option).toHaveText("style, no rendered geometry");
+  await expect(option).toHaveAttribute("aria-posinset", "2");
+  await expect(page.getByTestId("selection-box")).toBeHidden();
+  await expect(page.locator(".breadcrumb")).toContainText("svg›style");
+  await expect(page.locator(".cm-activeLine")).toContainText("<style>");
+  await expect(inspector).toBeFocused();
+  await expect(page.locator("#live-region")).toBeEmpty();
+
+  await inspector.press("ArrowDown");
+  await expect(option).toHaveText("rect");
+  await expect(option).toHaveAttribute("aria-posinset", "3");
+  await expect(page.getByTestId("selection-box")).toBeVisible();
+  await expect(page.locator(".cm-activeLine")).toContainText("<rect");
+  await expect(inspector).toBeFocused();
+
+  await inspector.press("Shift+ArrowUp");
+  await expect(option).toHaveText("svg");
+  await expect(option).toHaveAttribute("aria-posinset", "1");
+  await inspector.press("ArrowRight");
+  await expect(option).toHaveText("style, no rendered geometry");
+  const activeOption = await inspector.getAttribute("aria-activedescendant");
+  expect(activeOption).toBe(await option.getAttribute("id"));
+
+  await inspector.press("Enter");
+  await expect(page.locator(".cm-content")).toBeFocused();
+  expect(await page.evaluate(() => window.getSelection()?.toString())).toBe(
+    "style",
+  );
+});
+
+test("announces when keyboard preview selection is unavailable", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await replaceSource(
+    page,
+    `<svg xmlns="${SVG_NAMESPACE}" viewBox="0 0 10 10"><g></svg>`,
+  );
+  await expect(page.getByTestId("document-status")).toContainText("stale");
+
+  const inspector = page.getByRole("listbox", { name: "Rendered elements" });
+  await inspector.focus();
+  await inspector.press("ArrowDown");
+  await expect(page.locator("#live-region")).toHaveText(
+    "Preview is held at the last valid source; selection is unavailable.",
+  );
+  await expect(inspector).not.toHaveAttribute("aria-activedescendant", /.+/);
+  await expect(page.getByRole("option")).toHaveAttribute(
+    "aria-selected",
+    "false",
+  );
+});
+
+test("keeps a paused selection outline aligned after preview resize", async ({
+  page,
+}) => {
+  const errors = collectUnexpectedConsoleErrors(page);
+  await page.goto("/");
+  await expect(page.getByTestId("document-status")).toHaveText("valid");
+  await page.getByRole("button", { name: "Pause animation" }).click();
+  await page
+    .locator(".cm-line")
+    .nth(22)
+    .click({ position: { x: 120, y: 8 } });
+  await expect(page.locator(".breadcrumb")).toContainText("circle#dot");
+
+  const alignmentError = (): Promise<number> =>
+    page.locator("iframe").evaluate((frame: HTMLIFrameElement) => {
+      const frameRect = frame.getBoundingClientRect();
+      const elementRect = frame.contentDocument
+        ?.querySelector("#dot")
+        ?.getBoundingClientRect();
+      const boxRect = frame.ownerDocument
+        .querySelector("[data-testid=selection-box]")
+        ?.getBoundingClientRect();
+      if (!elementRect || !boxRect) return Infinity;
+      return Math.max(
+        Math.abs(boxRect.left - (frameRect.left + elementRect.left)),
+        Math.abs(boxRect.top - (frameRect.top + elementRect.top)),
+        Math.abs(boxRect.width - elementRect.width),
+        Math.abs(boxRect.height - elementRect.height),
+      );
+    });
+
+  await expect.poll(alignmentError).toBeLessThan(0.75);
+  const before = await page.getByTestId("selection-box").boundingBox();
+  await page.setViewportSize({ width: 1000, height: 720 });
+  await expect.poll(alignmentError).toBeLessThan(0.75);
+  const after = await page.getByTestId("selection-box").boundingBox();
+  expect(after?.x).not.toBeCloseTo(before?.x ?? 0, 0);
+  expect(errors).toEqual([]);
+});
+
 test("edits root variables in source and shows sliders only for authored bounds", async ({
   page,
 }) => {

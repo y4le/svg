@@ -68,6 +68,115 @@ test("renders a mixed-animation document with browser geometry APIs", async ({
   expect(errors).toEqual([]);
 });
 
+test("derives the bundled inspection horizon from its longest CSS iteration", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await expect(page.getByTestId("document-status")).toHaveText("valid");
+  await expect(page.getByLabel("Inspection time")).toHaveAttribute("max", "4");
+  const horizon = page.locator("#inspection-horizon");
+  await expect(horizon).toHaveText("horizon 4.00s · longest CSS iteration");
+  await expect(horizon).toHaveCSS("color", "rgb(141, 138, 129)");
+  expect(
+    await horizon.evaluate(
+      (element) => element.scrollWidth <= element.clientWidth,
+    ),
+  ).toBe(true);
+  await page.setViewportSize({ width: 900, height: 720 });
+  await expect(page.getByRole("button", { name: "download" })).toBeInViewport({
+    ratio: 1,
+  });
+  await expect(horizon).toHaveCSS("text-overflow", "ellipsis");
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          document.documentElement.scrollWidth <=
+          document.documentElement.clientWidth,
+      ),
+    )
+    .toBe(true);
+});
+
+test("reaches a long finite SMIL horizon", async ({ page }) => {
+  await page.goto("/");
+  await replaceSource(
+    page,
+    `<svg xmlns="${SVG_NAMESPACE}" viewBox="0 0 100 100">
+      <circle cy="50" r="10">
+        <animate attributeName="cx" from="10" to="90" dur="30s" />
+      </circle>
+    </svg>`,
+  );
+
+  const scrubber = page.getByLabel("Inspection time");
+  await expect(scrubber).toHaveAttribute("max", "30");
+  await expect(page.locator("#inspection-horizon")).toHaveText(
+    "horizon 30.00s · longest SMIL timing",
+  );
+  await page.getByRole("button", { name: "Pause animation" }).click();
+  await scrubber.fill("30");
+  await expect(page.getByLabel("Preview time")).toHaveText("30.00s");
+});
+
+test("distinguishes static and unresolved fallback horizons", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const horizon = page.locator("#inspection-horizon");
+  const scrubber = page.getByLabel("Inspection time");
+
+  await replaceSource(
+    page,
+    `<svg xmlns="${SVG_NAMESPACE}" viewBox="0 0 100 100"><rect width="100" height="100" /></svg>`,
+  );
+  await expect(scrubber).toHaveAttribute("max", "10");
+  await expect(horizon).toHaveText("horizon 10s · no animation timing");
+
+  await replaceSource(
+    page,
+    `<svg xmlns="${SVG_NAMESPACE}" viewBox="0 0 100 100">
+      <circle cx="50" cy="50" r="10">
+        <animate attributeName="opacity" begin="click" dur="indefinite" />
+      </circle>
+    </svg>`,
+  );
+  await expect(scrubber).toHaveAttribute("max", "10");
+  await expect(horizon).toHaveText(
+    "horizon 10s · indefinite or event-driven timing",
+  );
+});
+
+test("updates and clamps the scrubber when a replacement horizon shrinks", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await replaceSource(
+    page,
+    `<svg xmlns="${SVG_NAMESPACE}" viewBox="0 0 100 100">
+      <circle cy="50" r="10">
+        <animate attributeName="cx" from="10" to="90" dur="30s" />
+      </circle>
+    </svg>`,
+  );
+  await page.getByRole("button", { name: "Pause animation" }).click();
+  const scrubber = page.getByLabel("Inspection time");
+  await expect(scrubber).toHaveAttribute("max", "30");
+  await scrubber.fill("25");
+
+  await replaceSource(
+    page,
+    `<svg xmlns="${SVG_NAMESPACE}" viewBox="0 0 100 100">
+      <circle cy="50" r="10">
+        <animate attributeName="cx" from="10" to="90" dur="1s" />
+      </circle>
+    </svg>`,
+  );
+  await expect(scrubber).toHaveAttribute("max", "1");
+  await expect(scrubber).toHaveValue("1");
+  await expect(page.getByLabel("Preview time")).toHaveText("25.00s");
+});
+
 test("pauses and restarts CSS and SMIL clocks", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByTestId("document-status")).toContainText("valid");

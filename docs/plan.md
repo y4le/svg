@@ -151,6 +151,38 @@ Acceptance checks:
 - the first pushed workflow succeeds and `https://yalethom.as/svg/` serves the
   workbench through the custom domain inherited from `y4le/y4le.github.io`.
 
+## Document-derived inspection horizon — 2026-08-19
+
+Goal: replace the arbitrary ten-second scrubber limit with an honest coverage
+window derived from the rendered document's CSS/Web Animation and supported
+SMIL timing.
+
+Non-goals: a visual timeline, event-graph inference, author-supplied horizon
+metadata, general CSS/SMIL provenance, or a product-imposed maximum duration.
+
+Affected boundaries: a pure timing-policy module owns clock parsing and
+candidate aggregation; `PreviewSession` alone reads browser animation APIs and
+caches the result in `PlaybackState`; `WorkbenchApp` only renders the scrubber
+range and its accessible provenance. Source text and playback clocks remain
+unchanged.
+
+Acceptance checks:
+
+- the bundled mixed example resolves to its four-second CSS iteration while a
+  finite 30-second SMIL document remains reachable at 30 seconds;
+- finite CSS end times and infinite CSS single-iteration windows include their
+  delays, while supported SMIL `dur` and `begin` clock values share the same
+  seconds axis;
+- static documents retain the ten-second default and say that no timing was
+  found; indefinite, event-driven, or otherwise unresolved timing retains the
+  fallback and says why rather than presenting it as derived;
+- horizon derivation cannot fail preview publication, recomputes for each valid
+  preview generation, and clamps only the scrubber thumb when a replacement
+  document has a shorter window;
+- pure policy tests cover clock parsing, CSS/SMIL candidates, aggregation, and
+  labels; the bundled, long-SMIL, static, unresolved, and replacement cases
+  pass in Chromium, Firefox, and WebKit.
+
 ## Non-goals
 
 - A general vector drawing program; that possibility has a separate extension

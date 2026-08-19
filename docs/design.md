@@ -286,10 +286,13 @@ override and offer navigation to the winning animation source.
   state before replacing the preview, then restore them on the rebuilt CSS and
   SMIL clocks. Editing must not throw an author back to zero; only Restart does.
 - **Time:** report SVG document time when available. A seek control is shown
-  when the document has a meaningful bounded duration or the user supplies an
-  inspection horizon. Seeking sets the SMIL document clock and the current time
-  of CSS/Web Animation objects together. Event-driven/indefinite cases show
-  their limitation rather than inventing a duration.
+  against a document-derived inspection horizon: the longest supported finite
+  timing, or one complete iteration for an indefinitely repeating animation.
+  CSS/Web Animation and supported SMIL clock values share the same seconds
+  axis. When no timing is derivable, retain a ten-second fallback and identify
+  whether the document is static or has indefinite/event-driven timing rather
+  than presenting the fallback as authored duration. Seeking sets the SMIL
+  document clock and the current time of CSS/Web Animation objects together.
 - **Speed:** defer a global speed control until mixed-clock semantics are
   tested. Per-document duration variables already cover many useful cases.
 - **Reduced motion:** workbench transitions stay restrained; preview animation

@@ -68,6 +68,7 @@ button:disabled {
 
 .app-shell {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: 44px minmax(0, 1fr) 42px;
   width: 100%;
   height: 100%;
@@ -82,6 +83,7 @@ button:disabled {
 }
 
 .top-rail {
+  min-width: 0;
   justify-content: space-between;
   border-bottom: 1px solid var(--rule);
 }
@@ -90,11 +92,8 @@ button:disabled {
 .rail-actions {
   display: flex;
   align-items: center;
-  height: 100%;
-}
-
-.file-state {
   min-width: 0;
+  height: 100%;
 }
 
 .wordmark,
@@ -179,6 +178,16 @@ button {
   font-size: 11px;
   text-align: right;
   font-variant-numeric: tabular-nums;
+}
+
+.playback-horizon {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-family: "Geist Mono Variable", "Geist Mono", monospace;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .time-scrubber {
@@ -472,6 +481,7 @@ button {
   .file-action,
   .rail-separator,
   .rail-note,
+  .playback-horizon,
   .time-scrubber {
     display: none;
   }

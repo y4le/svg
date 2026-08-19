@@ -32,6 +32,7 @@ import {
   type AnimationFamily,
   type PlaybackState,
 } from "../preview/PreviewSession";
+import { inspectionHorizonLabel } from "../preview/inspectionHorizon";
 import { h } from "../ui/dom";
 import {
   discoverRootVariables,
@@ -99,6 +100,7 @@ export class WorkbenchApp {
   #pauseButton: HTMLButtonElement;
   #restartButton: HTMLButtonElement;
   #time: HTMLSpanElement;
+  #horizon: HTMLSpanElement;
   #dirty = false;
   #baselineSource = DEFAULT_SVG;
   #stale = false;
@@ -201,7 +203,7 @@ export class WorkbenchApp {
       step: 0.01,
       value: 0,
       "aria-label": "Inspection time",
-      title: "Inspection horizon: 10 seconds",
+      "aria-describedby": "inspection-horizon",
       oninput: (event) =>
         this.preview.seek(
           Number((event.currentTarget as HTMLInputElement).value),
@@ -233,6 +235,11 @@ export class WorkbenchApp {
       textContent: "0.00s",
       role: "timer",
       "aria-label": "Preview time",
+    });
+    this.#horizon = h("span", {
+      className: "playback-horizon",
+      id: "inspection-horizon",
+      textContent: "horizon 10s · no animation timing",
     });
     this.#pauseButton = h("button", {
       type: "button",
@@ -272,6 +279,7 @@ export class WorkbenchApp {
             "aria-label": "Playback and file actions",
           },
           this.#time,
+          this.#horizon,
           this.#scrubber,
           this.#pauseButton,
           this.#restartButton,
@@ -462,15 +470,21 @@ export class WorkbenchApp {
   }
 
   #renderPlayback(state: PlaybackState): void {
+    const horizon = inspectionHorizonLabel(state.horizon);
+    const max = String(state.horizon.seconds);
+    const step = state.horizon.seconds < 1 ? "0.001" : "0.01";
     this.#pauseButton.textContent = state.paused ? "play" : "pause";
     this.#pauseButton.setAttribute(
       "aria-label",
       state.paused ? "Play animation" : "Pause animation",
     );
     this.#time.textContent = `${state.time.toFixed(2)}s`;
-    this.#scrubber.value = String(
-      Math.min(Number(this.#scrubber.max), state.time),
-    );
+    if (this.#scrubber.max !== max) this.#scrubber.max = max;
+    if (this.#scrubber.step !== step) this.#scrubber.step = step;
+    this.#scrubber.value = String(Math.min(state.horizon.seconds, state.time));
+    this.#scrubber.title = horizon;
+    this.#horizon.textContent = horizon;
+    this.#horizon.title = horizon;
     this.#time.title = familyLabel(state.family);
     if (this.#lastValid && !this.#stale) {
       this.#previewMeta.textContent = `${familyLabel(state.family)} · ${disabledSummary(this.#lastValid)}`;

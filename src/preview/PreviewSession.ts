@@ -1,5 +1,13 @@
 import type { ValidSvg } from "../document/validation";
 import { hardenImportedSvg } from "../security/previewPolicy";
+import {
+  DEFAULT_INSPECTION_HORIZON_SECONDS,
+  resolveInspectionHorizon,
+  smilCandidate,
+  webAnimationCandidate,
+  type HorizonCandidate,
+  type InspectionHorizon,
+} from "./inspectionHorizon";
 
 export type AnimationFamily = "none" | "css" | "smil" | "mixed";
 
@@ -7,6 +15,7 @@ export interface PlaybackState {
   readonly paused: boolean;
   readonly time: number;
   readonly family: AnimationFamily;
+  readonly horizon: InspectionHorizon;
 }
 
 interface PreviewCallbacks {
@@ -33,6 +42,12 @@ export class PreviewSession {
   #paused: boolean;
   #time = 0;
   #family: AnimationFamily = "none";
+  #horizon: InspectionHorizon = {
+    seconds: DEFAULT_INSPECTION_HORIZON_SECONDS,
+    source: "default",
+    unresolvedTimings: 0,
+    fallback: "static",
+  };
   #callbacks: PreviewCallbacks;
 
   constructor(container: HTMLElement, callbacks: PreviewCallbacks) {
@@ -52,7 +67,12 @@ export class PreviewSession {
   }
 
   get state(): PlaybackState {
-    return { paused: this.#paused, time: this.#time, family: this.#family };
+    return {
+      paused: this.#paused,
+      time: this.#time,
+      family: this.#family,
+      horizon: this.#horizon,
+    };
   }
 
   get document(): Document | null {
@@ -72,11 +92,15 @@ export class PreviewSession {
     await this.#ready;
     if (generation !== this.#generation) return;
 
+    const cssDeclaration = /(?:^|[;{\s])animation(?:-[a-z-]+)?\s*:/i;
     const expectedCss =
       this.#family === "css" ||
       this.#family === "mixed" ||
       [...validation.document.querySelectorAll("style")].some((style) =>
-        /(?:^|[;{\s])animation(?:-name)?\s*:/i.test(style.textContent ?? ""),
+        cssDeclaration.test(style.textContent ?? ""),
+      ) ||
+      [...validation.document.querySelectorAll("[style]")].some((element) =>
+        cssDeclaration.test(element.getAttribute("style") ?? ""),
       );
     if (!options.restart) this.#captureTime();
     else this.#time = 0;
@@ -97,6 +121,7 @@ export class PreviewSession {
 
     const familyReady = await this.#detectFamily(generation, expectedCss);
     if (!familyReady || generation !== this.#generation) return;
+    this.#horizon = this.#deriveHorizon(validation);
     this.#pauseClocks();
     const restored = await this.#settleTime(generation, restoreTime);
     if (generation !== this.#generation) return;
@@ -153,6 +178,47 @@ export class PreviewSession {
 
   #animations(): Animation[] {
     return this.document?.getAnimations() ?? [];
+  }
+
+  #deriveHorizon(validation: ValidSvg): InspectionHorizon {
+    const candidates: HorizonCandidate[] = [];
+    let unresolvedTimings = 0;
+    try {
+      for (const animation of this.#animations()) {
+        if ("transitionProperty" in animation) continue;
+        try {
+          const timing = animation.effect?.getComputedTiming();
+          const candidate = timing
+            ? webAnimationCandidate({
+                delay: timing.delay,
+                duration: timing.duration,
+                endTime: timing.endTime,
+              })
+            : null;
+          if (candidate) candidates.push(candidate);
+          else unresolvedTimings += 1;
+        } catch {
+          unresolvedTimings += 1;
+        }
+      }
+
+      const smilElements = validation.document.querySelectorAll(
+        "animate, animateMotion, animateTransform, set",
+      );
+      for (const element of smilElements) {
+        const candidate = smilCandidate({
+          begin: element.getAttribute("begin"),
+          dur: element.getAttribute("dur"),
+          repeatCount: element.getAttribute("repeatCount"),
+          repeatDur: element.getAttribute("repeatDur"),
+        });
+        if (candidate) candidates.push(candidate);
+        else unresolvedTimings += 1;
+      }
+    } catch {
+      return resolveInspectionHorizon([], Math.max(1, unresolvedTimings));
+    }
+    return resolveInspectionHorizon(candidates, unresolvedTimings);
   }
 
   #captureTime(): void {

@@ -138,10 +138,11 @@ draft asks before replacing dirty work; untouched downloads retain exact input
 bytes; edited uniform EOL/BOM policy is preserved; edited mixed EOL becomes LF
 with a visible notice.
 
-Current limits are equally intentional: the inspection scrubber exposes a
-0–10 second horizon rather than pretending to infer every indefinite or
-event-driven duration; controls discover direct-root custom-property literals
-and direct-root `@control` comments; animation provenance, Inspect/Interact,
+Current limits are equally intentional: the inspection scrubber derives the
+longest supported CSS/SMIL timing, uses one iteration for indefinite loops, and
+retains a visibly explained ten-second fallback for static, zero-length, or
+unresolved timing; controls discover direct-root custom-property literals and
+direct-root `@control` comments; animation provenance, Inspect/Interact,
 pan/zoom, richer `use` instances, and direct filesystem save are not yet
 implemented. Do not present the separate visual-editing extension as current
 core capability.

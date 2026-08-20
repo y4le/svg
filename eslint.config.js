@@ -5,6 +5,7 @@ export default tseslint.config(
   {
     ignores: [
       ".parley/**",
+      "coverage/**",
       "dist/**",
       "eslint.config.js",
       "node_modules/**",

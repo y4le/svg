@@ -217,6 +217,54 @@ Acceptance checks:
 - focus, structural walking, source handoff, non-geometric selection, and exact
   post-resize overlay alignment pass in Chromium, Firefox, and WebKit.
 
+## Review follow-through — 2026-08-19
+
+Goal: close the remaining concrete correctness, release, security, and
+maintenance gaps in the current workbench without broadening it or weakening
+its source and preview trust boundaries.
+
+Non-goals: adopting the File System Access API, changing the project format,
+adding a backend or telemetry, performing major dependency migrations, trimming
+intentional CodeMirror or font capabilities, or replacing the current handoff
+workflow.
+
+Affected boundaries: the Pages release graph; local recovery state and its
+visible failure mode; the public HTML shell and app-level content policy;
+version-bound variable edit commands; validation and preview hardening tests;
+and small repository-owned UI/tooling surfaces.
+
+Acceptance checks:
+
+- Pages deployment requires the full Chromium, Firefox, and WebKit contract
+  suite after a validated build, with Playwright browser installation explicit
+  in CI and the existing build job remaining the sole Pages artifact producer;
+- an offered recovery draft cannot be overwritten until the user restores or
+  discards it, a download establishes the current name and source as the clean
+  baseline without discarding the recovery record, and every IndexedDB failure
+  produces one visible recovery-unavailable notice without an unhandled
+  rejection;
+- the public shell has local favicon/share metadata and an explicit CSP that
+  preserves CodeMirror, local assets, blob downloads, and the sandboxed SVG
+  preview while denying undeclared network and script capabilities;
+- variable controls carry the source version that established their exact
+  range, stale commands fail closed in production paths, and pointer gestures
+  retain one-undo behavior without reparsing the whole source per commit; a
+  refused stale command restores the visible value, announces the refusal, and
+  re-arms only when the next valid source version publishes controls;
+- focused unit cases enumerate hostile validation and hardening inputs,
+  including namespaced references, foreign content, embedded documents,
+  navigation, inline handlers, and CSS imports/URLs;
+- false-valued DOM properties are represented intentionally, dead styles and
+  redundant breadcrumb/active-option updates are removed without suppressing
+  live overlay geometry, Node 24 is declared alongside CI, ignored generated
+  reports stay outside lint and formatting, and automated dependency updates
+  are configured without folding major upgrades into this work;
+- the handoff records the resulting review follow-through commits and verified
+  gates without replacing the repository's current cold-start workflow;
+- each focused commit passes its smallest relevant tests plus formatting,
+  typecheck, lint, and build gates; browser-affecting commits also pass the
+  three-engine suite.
+
 ## Non-goals
 
 - A general vector drawing program; that possibility has a separate extension

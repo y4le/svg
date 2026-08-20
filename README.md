@@ -70,6 +70,8 @@ Firefox, and WebKit contracts, builds the app with its `/svg/` project-site
 base, and deploys `dist` through GitHub Pages. The project site inherits the
 user site's `yalethom.as` custom domain and is published at
 <https://yalethom.as/svg/>; this repository does not carry its own `CNAME`.
+Pull requests run the same validation, Pages-shape assertions, and browser
+contracts without uploading or deploying an artifact.
 
 To reproduce the Pages build locally:
 

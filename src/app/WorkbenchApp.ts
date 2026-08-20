@@ -629,6 +629,8 @@ export class WorkbenchApp {
     const changed =
       this.#selectedId !== element.id ||
       this.#selectedVersion !== this.#version;
+    // Alignment, playback, and resize paths refresh geometry independently.
+    if (!changed && reveal === "none") return;
     this.#selectedId = element.id;
     this.#selectedVersion = this.#version;
     if (reveal !== "none") {

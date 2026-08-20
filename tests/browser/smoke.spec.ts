@@ -620,6 +620,81 @@ test("links source positions and rendered elements through one selection", async
   await expect(page.locator(".breadcrumb")).toContainText("svg›g#orbit");
 });
 
+test("does not remeasure an unchanged source selection", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByTestId("document-status")).toHaveText("valid");
+  await page.getByRole("button", { name: "Pause animation" }).click();
+
+  const dotLine = page.locator(".cm-line").nth(22);
+  await dotLine.click({ position: { x: 120, y: 8 } });
+  await expect(page.locator(".breadcrumb")).toContainText("circle#dot");
+  await expect(page.getByTestId("selection-box")).toBeVisible();
+
+  const inspector = page.getByRole("listbox", { name: "Rendered elements" });
+  const before = {
+    activeOption: await inspector.getAttribute("aria-activedescendant"),
+    breadcrumb: await page.locator(".breadcrumb").textContent(),
+    boxStyle: await page.getByTestId("selection-box").getAttribute("style"),
+  };
+  await page.locator("iframe").evaluate((frame: HTMLIFrameElement) => {
+    const documentNode = frame.contentDocument;
+    if (!documentNode) throw new Error("Expected preview document");
+    const root = documentNode.documentElement;
+    root.setAttribute("data-selection-rect-reads", "0");
+    for (const element of documentNode.querySelectorAll("*")) {
+      const original = element.getBoundingClientRect.bind(element);
+      element.getBoundingClientRect = () => {
+        const reads = Number(
+          root.getAttribute("data-selection-rect-reads") ?? "0",
+        );
+        root.setAttribute("data-selection-rect-reads", String(reads + 1));
+        return original();
+      };
+    }
+  });
+
+  await dotLine.click({ position: { x: 180, y: 8 } });
+  expect(
+    await page.locator("iframe").evaluate((frame: HTMLIFrameElement) => {
+      return Number(
+        frame.contentDocument?.documentElement.getAttribute(
+          "data-selection-rect-reads",
+        ) ?? "0",
+      );
+    }),
+  ).toBe(0);
+  await expect(inspector).toHaveAttribute(
+    "aria-activedescendant",
+    before.activeOption ?? "",
+  );
+  await expect(page.locator(".breadcrumb")).toHaveText(before.breadcrumb ?? "");
+  await expect(page.getByTestId("selection-box")).toHaveAttribute(
+    "style",
+    before.boxStyle ?? "",
+  );
+
+  await page
+    .locator(".cm-line")
+    .nth(20)
+    .click({ position: { x: 120, y: 8 } });
+  await expect(page.locator(".breadcrumb")).toContainText("circle.guide");
+  await expect(inspector).not.toHaveAttribute(
+    "aria-activedescendant",
+    before.activeOption ?? "",
+  );
+  await expect
+    .poll(() =>
+      page.locator("iframe").evaluate((frame: HTMLIFrameElement) => {
+        return Number(
+          frame.contentDocument?.documentElement.getAttribute(
+            "data-selection-rect-reads",
+          ) ?? "0",
+        );
+      }),
+    )
+    .toBeGreaterThan(0);
+});
+
 test("walks rendered elements by keyboard and hands focus back to source", async ({
   page,
 }) => {

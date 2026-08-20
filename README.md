@@ -65,9 +65,10 @@ npm run test:browser
 
 ## Publish
 
-Pushing `main` to `y4le/svg` validates the repository, builds the app with its
-`/svg/` project-site base, and deploys `dist` through GitHub Pages. The project
-site inherits the user site's `yalethom.as` custom domain and is published at
+Pushing `main` to `y4le/svg` validates the repository, runs the Chromium,
+Firefox, and WebKit contracts, builds the app with its `/svg/` project-site
+base, and deploys `dist` through GitHub Pages. The project site inherits the
+user site's `yalethom.as` custom domain and is published at
 <https://yalethom.as/svg/>; this repository does not carry its own `CNAME`.
 
 To reproduce the Pages build locally:

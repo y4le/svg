@@ -421,7 +421,12 @@ one-time notice. This is the truthful boundary of byte fidelity because
 CodeMirror cannot retain arbitrary mixed separators in its line model.
 
 Recovery persists source text and filename only after idle. On startup it is
-offered with timestamp and discard actions; it is never silently applied.
+offered with timestamp and discard actions; it is never silently applied, and
+autosave pauses until that one offered copy is resolved. Initiating a download
+keeps the preceding recovery copy because an anchor click does not confirm that
+bytes reached disk; replacing that document therefore requires an explicit
+choice. IndexedDB failure disables recovery for the session and is reported
+once in the workbench rather than rejecting silently.
 
 ### Proposed stack
 

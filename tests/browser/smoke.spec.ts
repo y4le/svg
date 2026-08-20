@@ -886,7 +886,7 @@ test("does not replace unsaved work without confirmation", async ({ page }) => {
   await expect(page.locator(".cm-content")).toContainText('id="keep-me"');
 });
 
-test("offers unsaved recovery and restores it only after confirmation", async ({
+test("offers a recovery copy and restores it only after confirmation", async ({
   page,
 }) => {
   const recovered = `<svg xmlns="${SVG_NAMESPACE}" viewBox="0 0 10 10"><circle id="recovered" r="4" /></svg>`;
@@ -898,13 +898,172 @@ test("offers unsaved recovery and restores it only after confirmation", async ({
   await page.waitForTimeout(500);
 
   await page.reload();
-  await expect(page.getByText(/Unsaved orbit-pulse\.svg/)).toBeVisible();
+  await expect(
+    page.getByText(/Recovery copy of orbit-pulse\.svg/),
+  ).toBeVisible();
+  await expect(page.getByText(/autosave paused/)).toBeVisible();
   await expect(page.locator(".cm-content")).not.toContainText('id="recovered"');
   await page.getByRole("button", { name: "restore" }).click();
   await expect(page.locator(".cm-content")).toContainText('id="recovered"');
   await expect(page.getByTestId("document-status")).toContainText(
     "valid · changed",
   );
+});
+
+test("does not overwrite an offered recovery copy before it is resolved", async ({
+  page,
+}) => {
+  const recovered = `<svg xmlns="${SVG_NAMESPACE}" viewBox="0 0 10 10"><circle id="first-session" r="4" /></svg>`;
+  const laterEdit = `<svg xmlns="${SVG_NAMESPACE}" viewBox="0 0 10 10"><rect id="second-session" width="10" height="10" /></svg>`;
+  await page.goto("/");
+  await replaceSource(page, recovered);
+  await page.waitForTimeout(500);
+
+  await page.reload();
+  await expect(
+    page.getByText(/Recovery copy of orbit-pulse\.svg/),
+  ).toBeVisible();
+  await replaceSource(page, laterEdit);
+  await page.waitForTimeout(600);
+
+  await page.reload();
+  await expect(
+    page.getByText(/Recovery copy of orbit-pulse\.svg/),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "restore" }).click();
+  await expect(page.locator(".cm-content")).toContainText('id="first-session"');
+  await expect(page.locator(".cm-content")).not.toContainText(
+    'id="second-session"',
+  );
+});
+
+test("discarding an offered copy resumes autosave for the current source", async ({
+  page,
+}) => {
+  const first = `<svg xmlns="${SVG_NAMESPACE}" viewBox="0 0 10 10"><circle id="discarded-session" r="4" /></svg>`;
+  const current = `<svg xmlns="${SVG_NAMESPACE}" viewBox="0 0 10 10"><rect id="current-session" width="10" height="10" /></svg>`;
+  await page.goto("/");
+  await replaceSource(page, first);
+  await page.waitForTimeout(500);
+
+  await page.reload();
+  await expect(
+    page.getByText(/Recovery copy of orbit-pulse\.svg/),
+  ).toBeVisible();
+  await replaceSource(page, current);
+  await page.getByRole("button", { name: "discard" }).click();
+  await expect(
+    page.getByText(/Recovery copy of orbit-pulse\.svg/),
+  ).toBeHidden();
+  await page.waitForTimeout(600);
+
+  await page.reload();
+  await expect(
+    page.getByText(/Recovery copy of orbit-pulse\.svg/),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "restore" }).click();
+  await expect(page.locator(".cm-content")).toContainText(
+    'id="current-session"',
+  );
+  await expect(page.locator(".cm-content")).not.toContainText(
+    'id="discarded-session"',
+  );
+});
+
+test("retains recovery after an unconfirmed download and later clean edit", async ({
+  page,
+}) => {
+  const recovered = `<svg xmlns="${SVG_NAMESPACE}" viewBox="0 0 10 10"><circle id="download-copy" r="4" /></svg>`;
+  await page.goto("/");
+  await replaceSource(page, recovered);
+  await page.waitForTimeout(500);
+
+  await Promise.all([
+    page.waitForEvent("download"),
+    page.getByRole("button", { name: "download" }).click(),
+  ]);
+  await expect(page.getByTestId("document-status")).toHaveText("valid");
+
+  const replacement = `<svg xmlns="${SVG_NAMESPACE}" viewBox="0 0 10 10"><rect id="replacement" width="10" height="10" /></svg>`;
+  const prompt = page.waitForEvent("dialog").then(async (dialog) => {
+    const message = dialog.message();
+    await dialog.dismiss();
+    return message;
+  });
+  await page.getByLabel("Open SVG file").setInputFiles({
+    name: "replacement.svg",
+    mimeType: "image/svg+xml",
+    buffer: Buffer.from(replacement),
+  });
+  expect(await prompt).toContain("download could not be confirmed");
+  await expect(page.locator(".cm-content")).toContainText('id="download-copy"');
+
+  const editor = page.locator(".cm-content");
+  await editor.click();
+  await editor.press("End");
+  await editor.press("Space");
+  await editor.press("Backspace");
+  await expect(page.getByTestId("document-status")).toHaveText("valid");
+  await page.waitForTimeout(600);
+
+  await page.reload();
+  await expect(
+    page.getByText(/Recovery copy of orbit-pulse\.svg/),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "restore" }).click();
+  await expect(page.locator(".cm-content")).toContainText('id="download-copy"');
+});
+
+test("reports unavailable recovery once without unhandled rejections", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    const scope = window as typeof window & { __rejections: string[] };
+    scope.__rejections = [];
+    window.addEventListener("unhandledrejection", (event) => {
+      scope.__rejections.push(String(event.reason));
+    });
+    Object.defineProperty(window, "indexedDB", {
+      configurable: true,
+      value: {
+        open: () => {
+          const request = {
+            error: new Error("storage blocked"),
+            onerror: null,
+            onsuccess: null,
+            onupgradeneeded: null,
+          } as unknown as IDBOpenDBRequest;
+          window.setTimeout(() => {
+            request.onerror?.call(request, new Event("error"));
+          }, 0);
+          return request;
+        },
+      },
+    });
+  });
+
+  await page.goto("/");
+  const notice = page.getByText(/Recovery unavailable/);
+  await expect(notice).toHaveCount(1);
+  await expect(notice).toContainText("Download to keep your work");
+
+  for (const id of ["one", "two", "three"]) {
+    await replaceSource(
+      page,
+      `<svg xmlns="${SVG_NAMESPACE}" viewBox="0 0 10 10"><circle id="${id}" r="4" /></svg>`,
+    );
+    await page.waitForTimeout(400);
+  }
+
+  await expect(notice).toHaveCount(1);
+  await expect(page.getByTestId("document-status")).toHaveText(
+    "valid · changed",
+  );
+  expect(
+    await page.evaluate(
+      () => (window as typeof window & { __rejections: string[] }).__rejections,
+    ),
+  ).toEqual([]);
 });
 
 test("recovers a filename-only change as unsaved metadata", async ({
@@ -922,7 +1081,9 @@ test("recovers a filename-only change as unsaved metadata", async ({
   await page.waitForTimeout(500);
 
   await page.reload();
-  await expect(page.getByText(/Unsaved recovered-name\.svg/)).toBeVisible();
+  await expect(
+    page.getByText(/Recovery copy of recovered-name\.svg/),
+  ).toBeVisible();
   await page.getByRole("button", { name: "restore" }).click();
   await expect(
     page.getByRole("button", { name: "Rename recovered-name.svg" }),

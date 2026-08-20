@@ -86,6 +86,7 @@ interface VariableGesture {
 }
 
 type SourceReveal = "none" | "follow" | "handoff";
+type RecoveryState = "probing" | "offering" | "active" | "unavailable";
 
 export class WorkbenchApp {
   readonly root: HTMLElement;
@@ -138,6 +139,11 @@ export class WorkbenchApp {
   #fileInput: HTMLInputElement;
   #recoveryNotice: HTMLDivElement;
   #recoveryTimer: number | undefined;
+  #recoveryState: RecoveryState = "probing";
+  #recoveryChain: Promise<void> = Promise.resolve();
+  #pendingDownloadRecovery: RecoveryRecord | null = null;
+  #downloadUnconfirmed = false;
+  #closed = false;
 
   constructor(mount: HTMLElement) {
     const editorHost = h("div", { className: "editor-host" });
@@ -399,6 +405,7 @@ export class WorkbenchApp {
   }
 
   destroy(): void {
+    this.#closed = true;
     window.clearTimeout(this.#previewTimer);
     window.clearTimeout(this.#recoveryTimer);
     window.cancelAnimationFrame(this.#clockFrame ?? 0);
@@ -1201,6 +1208,8 @@ export class WorkbenchApp {
     source: string,
     filename = envelope.filename,
   ): void {
+    this.#pendingDownloadRecovery = null;
+    this.#downloadUnconfirmed = false;
     this.#envelope = envelope;
     this.#baselineSource = envelope.source;
     this.#baselineFilename = envelope.filename;
@@ -1222,6 +1231,13 @@ export class WorkbenchApp {
   }
 
   #download(): void {
+    const hadPendingChanges = this.#dirty;
+    if (hadPendingChanges) {
+      const recovery = this.#currentRecovery();
+      if (this.#recoveryState === "active")
+        this.#queueRecovery(() => saveRecovery(recovery));
+      else this.#pendingDownloadRecovery = recovery;
+    }
     const bytes = this.#envelope.export(this.#source);
     const blob = new Blob([bytes.slice().buffer], { type: "image/svg+xml" });
     const url = URL.createObjectURL(blob);
@@ -1230,48 +1246,59 @@ export class WorkbenchApp {
     link.download = this.#currentFilename;
     link.click();
     URL.revokeObjectURL(url);
+    this.#downloadUnconfirmed ||= hadPendingChanges;
 
     this.#envelope = FileEnvelope.fromBytes(link.download, bytes);
     this.#baselineSource = this.#source;
     this.#baselineFilename = this.#currentFilename;
     this.#syncDirtyState();
     this.#renderDirtyStatus();
-    void clearRecovery();
-    this.#announce(`${link.download} downloaded.`);
+    this.#announce(`${link.download} download started.`);
   }
 
   #scheduleRecovery(): void {
     window.clearTimeout(this.#recoveryTimer);
     this.#recoveryTimer = window.setTimeout(() => {
+      if (this.#closed || this.#recoveryState !== "active") return;
       if (!this.#dirty) {
-        void clearRecovery();
+        if (!this.#downloadUnconfirmed)
+          this.#queueRecovery(() => clearRecovery());
         return;
       }
-      void saveRecovery({
-        source: this.#source,
-        baseline: this.#baselineSource,
-        filename: this.#currentFilename,
-        baselineFilename: this.#baselineFilename,
-        originalBytes: this.#envelope.export(this.#envelope.source),
-        updatedAt: Date.now(),
-      });
+      this.#queueRecoverySave();
     }, 350);
   }
 
   async #offerRecovery(): Promise<void> {
-    const recovery = await loadRecovery().catch(() => undefined);
-    if (!recovery) return;
+    let recovery: RecoveryRecord | undefined;
+    try {
+      recovery = await loadRecovery();
+    } catch {
+      this.#failRecovery();
+      return;
+    }
+    if (this.#closed) return;
+    if (!recovery) {
+      this.#activateRecovery();
+      return;
+    }
     const baselineFilename = recovery.baselineFilename ?? recovery.filename;
     if (
       recovery.source === recovery.baseline &&
       recovery.filename === baselineFilename
     ) {
+      this.#activateRecovery();
       return;
     }
+    this.#recoveryState = "offering";
     const age = new Date(recovery.updatedAt).toLocaleString();
     this.#recoveryNotice.hidden = false;
     this.#recoveryNotice.replaceChildren(
-      h("span", {}, `Unsaved ${recovery.filename} from ${age}`),
+      h(
+        "span",
+        {},
+        `Recovery copy of ${recovery.filename} from ${age} — autosave paused until you restore or discard.`,
+      ),
       h(
         "button",
         { type: "button", onclick: () => this.#restoreRecovery(recovery) },
@@ -1286,28 +1313,91 @@ export class WorkbenchApp {
   }
 
   #restoreRecovery(recovery: RecoveryRecord): void {
+    if (this.#recoveryState !== "offering") return;
     if (!this.#confirmReplace(`restore ${recovery.filename}`)) return;
     const envelope = FileEnvelope.fromBytes(
       recovery.baselineFilename ?? recovery.filename,
       recovery.originalBytes,
     );
+    this.#recoveryState = "active";
     this.#recoveryNotice.hidden = true;
     this.#loadEnvelope(envelope, recovery.source, recovery.filename);
-    this.#announce("Unsaved SVG restored.");
+    this.#announce("Recovery copy restored.");
   }
 
   async #discardRecovery(): Promise<void> {
-    await clearRecovery();
+    if (this.#recoveryState !== "offering") return;
+    for (const button of this.#recoveryNotice.querySelectorAll("button"))
+      button.setAttribute("disabled", "");
+    try {
+      await clearRecovery();
+    } catch {
+      this.#failRecovery();
+      return;
+    }
+    if (this.#closed) return;
     this.#recoveryNotice.hidden = true;
-    this.#announce("Recovered draft discarded.");
+    this.#announce("Recovery copy discarded.");
+    this.#activateRecovery();
+  }
+
+  #activateRecovery(): void {
+    if (this.#closed) return;
+    this.#recoveryState = "active";
+    const pending = this.#pendingDownloadRecovery;
+    this.#pendingDownloadRecovery = null;
+    if (pending) this.#queueRecovery(() => saveRecovery(pending));
+    this.#scheduleRecovery();
+  }
+
+  #queueRecoverySave(): void {
+    const record = this.#currentRecovery();
+    this.#queueRecovery(() => saveRecovery(record));
+  }
+
+  #currentRecovery(): RecoveryRecord {
+    return {
+      source: this.#source,
+      baseline: this.#baselineSource,
+      filename: this.#currentFilename,
+      baselineFilename: this.#baselineFilename,
+      originalBytes: this.#envelope.export(this.#envelope.source),
+      updatedAt: Date.now(),
+    };
+  }
+
+  #queueRecovery(operation: () => Promise<unknown>): void {
+    if (this.#closed || this.#recoveryState !== "active") return;
+    this.#recoveryChain = this.#recoveryChain.then(async () => {
+      if (this.#closed || this.#recoveryState !== "active") return;
+      try {
+        await operation();
+      } catch {
+        this.#failRecovery();
+      }
+    });
+  }
+
+  #failRecovery(): void {
+    if (this.#closed || this.#recoveryState === "unavailable") return;
+    this.#recoveryState = "unavailable";
+    window.clearTimeout(this.#recoveryTimer);
+    this.#recoveryNotice.replaceChildren(
+      h(
+        "span",
+        {},
+        "Recovery unavailable — local storage could not be used. Download to keep your work.",
+      ),
+    );
+    this.#recoveryNotice.hidden = false;
   }
 
   #confirmReplace(action: string): boolean {
-    return (
-      !this.#dirty ||
-      window.confirm(
-        `The current SVG has unsaved changes. Continue to ${action} and replace them?`,
-      )
+    if (!this.#dirty && !this.#downloadUnconfirmed) return true;
+    return window.confirm(
+      this.#dirty
+        ? `The current SVG has unsaved changes. Continue to ${action} and replace them?`
+        : `The last download could not be confirmed. Continue to ${action} and replace its recovery copy?`,
     );
   }
 

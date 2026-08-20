@@ -38,7 +38,14 @@ jobs:
       - name: Assert Pages base path
         run: |
           grep -q '/svg/assets/' dist/index.html
-          ! grep -Eq '(src|href)="/assets/' dist/index.html
+          if grep -Eo '(src|href)="/[^"]*"' dist/index.html | grep -qv '="/svg/'; then
+            exit 1
+          fi
+          test -s dist/icon.svg
+          grep -q 'Content-Security-Policy' dist/index.html
+          grep -q "default-src 'none'" dist/index.html
+          ! grep -Pq '<script(?![^>]*\bsrc=)[^>]*>' dist/index.html
+          grep -q 'href="https://yalethom.as/svg/"' dist/index.html
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5

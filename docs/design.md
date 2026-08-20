@@ -84,6 +84,10 @@ are reported. Inferred variable ranges are not presented as authored truth.
 Opening a file should not upload it, load its remote dependencies, execute its
 scripts, or require an account. Recovery state may live in IndexedDB. Direct
 filesystem handles are a progressive enhancement with download fallback.
+The app shell carries a static Content Security Policy as defence in depth. It
+must remain a superset of the stricter trusted preview-shell policy so imported
+inline SVG/CSS, data and blob images, and native animation keep working inside
+the sandbox without granting network or script capabilities.
 
 ### Quiet instrument, dense evidence
 

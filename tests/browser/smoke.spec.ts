@@ -68,6 +68,128 @@ test("renders a mixed-animation document with browser geometry APIs", async ({
   expect(errors).toEqual([]);
 });
 
+test("keeps the public shell policy compatible with the SVG instrument", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    const scope = window as typeof window & { __cspViolations: string[] };
+    scope.__cspViolations = [];
+    window.addEventListener("securitypolicyviolation", (event) => {
+      scope.__cspViolations.push(
+        `${event.violatedDirective}|${event.blockedURI}`,
+      );
+    });
+  });
+  await page.goto("/");
+
+  await expect(page.locator('meta[name="description"]')).toHaveAttribute(
+    "content",
+    "A source-first browser workbench for inspecting and tuning SVG without surrendering the code.",
+  );
+  await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
+    "href",
+    "https://yalethom.as/svg/",
+  );
+  const policy = await page
+    .locator('meta[http-equiv="Content-Security-Policy"]')
+    .getAttribute("content");
+  expect(policy).toContain("default-src 'none'");
+  expect(policy).toContain("script-src 'self'");
+  expect(policy).toContain("worker-src 'none'");
+
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) => {
+        const image = new Image();
+        image.onload = image.onerror = () => resolve();
+        image.src = "https://example.com/svg-workbench-csp-probe.png";
+      }),
+  );
+  const blockedProbe = await page.evaluate(
+    () =>
+      (window as typeof window & { __cspViolations: string[] }).__cspViolations,
+  );
+  expect(
+    blockedProbe.some((violation) => violation.startsWith("img-src|")),
+  ).toBe(true);
+  await page.evaluate(() => {
+    (window as typeof window & { __cspViolations: string[] }).__cspViolations =
+      [];
+  });
+
+  const iconUrl = await page
+    .locator('link[rel="icon"]')
+    .evaluate((link: HTMLLinkElement) => link.href);
+  expect((await page.request.get(iconUrl)).ok()).toBe(true);
+
+  await replaceSource(
+    page,
+    `<svg xmlns="${SVG_NAMESPACE}" viewBox="0 0 100 100">
+      <style>
+        @keyframes drift { to { transform: translateX(4px); } }
+        .css-motion { animation: drift 1s linear infinite; }
+      </style>
+      <rect class="css-motion" style="fill: #c1432e" x="10" y="10" width="20" height="20" />
+      <circle cx="50" cy="50" r="10">
+        <animate attributeName="r" values="8;12;8" dur="1s" repeatCount="indefinite" />
+      </circle>
+      <image href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxyZWN0IHdpZHRoPSIxIiBoZWlnaHQ9IjEiLz48L3N2Zz4=" width="1" height="1" />
+    </svg>`,
+  );
+  await expect
+    .poll(() =>
+      page
+        .locator("iframe")
+        .evaluate((frame: HTMLIFrameElement) =>
+          Boolean(frame.contentDocument?.querySelector(".css-motion")),
+        ),
+    )
+    .toBe(true);
+  await expect(page.getByText(/mixed animation/i)).toBeVisible();
+  expect(
+    await page.locator("iframe").evaluate((frame: HTMLIFrameElement) => {
+      const rect = frame.contentDocument?.querySelector("rect");
+      return {
+        cssAnimations: frame.contentDocument?.getAnimations().length ?? 0,
+        smilTime: (
+          frame.contentDocument?.querySelector("svg") as SVGSVGElement | null
+        )?.getCurrentTime(),
+        inlineFill:
+          rect && frame.contentWindow
+            ? frame.contentWindow.getComputedStyle(rect).fill
+            : null,
+      };
+    }),
+  ).toEqual({
+    cssAnimations: 1,
+    smilTime: expect.any(Number),
+    inlineFill: "rgb(193, 67, 46)",
+  });
+
+  await Promise.all([
+    page.waitForEvent("download"),
+    page.getByRole("button", { name: "download" }).click(),
+  ]);
+  await page.waitForTimeout(100);
+  expect(
+    await page.locator("iframe").evaluate(
+      (frame: HTMLIFrameElement) =>
+        (
+          frame.contentWindow as typeof window & {
+            __cspViolations: string[];
+          }
+        ).__cspViolations,
+    ),
+  ).toEqual([]);
+  expect(
+    await page.evaluate(
+      () =>
+        (window as typeof window & { __cspViolations: string[] })
+          .__cspViolations,
+    ),
+  ).toEqual([]);
+});
+
 test("derives the bundled inspection horizon from its longest CSS iteration", async ({
   page,
 }) => {

@@ -825,6 +825,10 @@ test("edits root variables in source and shows sliders only for authored bounds"
     "spellcheck",
     "false",
   );
+  const versionBefore = await page
+    .locator("iframe")
+    .getAttribute("data-source-version");
+  expect(versionBefore).toMatch(/^\d+$/);
 
   await dotRange.fill("12");
   await expect(page.getByTestId("document-status")).toContainText(
@@ -832,6 +836,10 @@ test("edits root variables in source and shows sliders only for authored bounds"
   );
   await expect(page.locator(".cm-content")).toContainText("--dot-size: 12px");
   await expect(page.getByLabel("dot size value")).toHaveValue("12px");
+  await expect(page.locator("iframe")).toHaveAttribute(
+    "data-source-version",
+    String(Number(versionBefore) + 1),
+  );
   const dotWidth = await page
     .locator("iframe")
     .evaluate(
@@ -1135,10 +1143,10 @@ test("does not discard an unsaved filename change without confirmation", async (
     page.getByRole("button", { name: "Rename pending.svg" }),
   ).toBeVisible();
 
-  let prompt = "";
-  page.once("dialog", async (dialog) => {
-    prompt = dialog.message();
+  const prompt = page.waitForEvent("dialog").then(async (dialog) => {
+    const message = dialog.message();
     await dialog.dismiss();
+    return message;
   });
   await page.getByLabel("Open SVG file").setInputFiles({
     name: "replacement.svg",
@@ -1146,7 +1154,7 @@ test("does not discard an unsaved filename change without confirmation", async (
     buffer: Buffer.from(replacement),
   });
 
-  expect(prompt).toContain("unsaved changes");
+  expect(await prompt).toContain("unsaved changes");
   await expect(
     page.getByRole("button", { name: "Rename pending.svg" }),
   ).toBeVisible();
@@ -1161,10 +1169,10 @@ test("does not replace unsaved work without confirmation", async ({ page }) => {
     "valid · changed",
   );
 
-  let prompt = "";
-  page.once("dialog", async (dialog) => {
-    prompt = dialog.message();
+  const prompt = page.waitForEvent("dialog").then(async (dialog) => {
+    const message = dialog.message();
     await dialog.dismiss();
+    return message;
   });
   await page.getByLabel("Open SVG file").setInputFiles({
     name: "replacement.svg",
@@ -1172,7 +1180,7 @@ test("does not replace unsaved work without confirmation", async ({ page }) => {
     buffer: Buffer.from(replacement),
   });
 
-  expect(prompt).toContain("unsaved changes");
+  expect(await prompt).toContain("unsaved changes");
   await expect(
     page.getByRole("button", { name: "Rename orbit-pulse.svg" }),
   ).toBeVisible();

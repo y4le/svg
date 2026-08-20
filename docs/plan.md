@@ -266,6 +266,13 @@ Acceptance checks:
   typecheck, lint, and build gates; browser-affecting commits also pass the
   three-engine suite.
 
+Implementation checkpoint: `fd7f744`; this handoff update closes the final
+documentation check. `npm run validate` passes 64 unit tests and the production
+build, two consecutive `npm run test:browser` runs pass 123/123 contracts, and
+`npm audit` is clean. Share metadata stays text-only until a raster card exists
+(D022), and outstanding non-major dependency updates are left to scheduled,
+CI-gated Dependabot pull requests.
+
 ## Non-goals
 
 - A general vector drawing program; that possibility has a separate extension

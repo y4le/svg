@@ -885,7 +885,7 @@ export class WorkbenchApp {
       className: "variable-value",
       type: "text",
       value: binding.value,
-      spellcheck: false,
+      spellcheck: "false",
       "aria-label": `${variable.label} value`,
       title: `${variable.name} · ${variable.usageCount} use${variable.usageCount === 1 ? "" : "s"}`,
       onchange: (event) => {

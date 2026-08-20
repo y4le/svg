@@ -746,6 +746,10 @@ test("edits root variables in source and shows sliders only for authored bounds"
   await expect(dotRange).toBeVisible();
   await expect(page.getByLabel("period range")).toBeVisible();
   await expect(page.getByLabel("ink range")).toHaveCount(0);
+  await expect(page.getByLabel("dot size value")).toHaveAttribute(
+    "spellcheck",
+    "false",
+  );
 
   await dotRange.fill("12");
   await expect(page.getByTestId("document-status")).toContainText(

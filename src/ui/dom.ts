@@ -13,6 +13,7 @@ export function h<K extends keyof HTMLElementTagNameMap>(
   const element = document.createElement(tag);
 
   for (const [key, value] of Object.entries(props)) {
+    // False omits an attribute; pass enumerated false values as strings.
     if (value === null || value === undefined || value === false) continue;
 
     if (key.startsWith("on") && typeof value === "function") {

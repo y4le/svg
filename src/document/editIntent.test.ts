@@ -11,11 +11,12 @@ import { sourceVersion } from "./source";
 describe("EditIntent", () => {
   it("retains the source version and exact replacement span", () => {
     expect(
-      replaceIntent(sourceVersion(4), { from: 9, to: 13 }, "2.5s"),
+      replaceIntent(sourceVersion(4), { from: 9, to: 13 }, "2.5s", "2.0s"),
     ).toEqual({
       version: 4,
       range: { from: 9, to: 13 },
       insert: "2.5s",
+      expect: "2.0s",
     });
   });
 
@@ -38,9 +39,43 @@ describe("EditIntent", () => {
     const applied = applyEditIntent(
       view,
       sourceVersion(8),
-      replaceIntent(sourceVersion(7), { from: 1, to: 2 }, "x"),
+      replaceIntent(sourceVersion(7), { from: 1, to: 2 }, "x", "y"),
     );
     expect(applied).toBe(false);
     expect(dispatch).not.toHaveBeenCalled();
+  });
+
+  it("refuses an unexpected source literal without dispatching", () => {
+    const dispatch = vi.fn();
+    const view = {
+      state: { doc: { sliceString: vi.fn(() => "changed") } },
+      dispatch,
+    } as unknown as EditorView;
+    const applied = applyEditIntent(
+      view,
+      sourceVersion(4),
+      replaceIntent(sourceVersion(4), { from: 2, to: 5 }, "new", "old"),
+    );
+    expect(applied).toBe(false);
+    expect(dispatch).not.toHaveBeenCalled();
+  });
+
+  it("dispatches only the expected exact range", () => {
+    const dispatch = vi.fn();
+    const view = {
+      state: { doc: { sliceString: vi.fn(() => "old") } },
+      dispatch,
+    } as unknown as EditorView;
+    const applied = applyEditIntent(
+      view,
+      sourceVersion(4),
+      replaceIntent(sourceVersion(4), { from: 2, to: 5 }, "new", "old"),
+    );
+    expect(applied).toBe(true);
+    expect(dispatch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        changes: { from: 2, to: 5, insert: "new" },
+      }),
+    );
   });
 });

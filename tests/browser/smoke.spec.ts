@@ -771,6 +771,98 @@ test("edits root variables in source and shows sliders only for authored bounds"
   await expect(page.locator(".cm-content")).toContainText("--ink: #00ff00");
 });
 
+test("refuses a variable edit built against a superseded source version", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await expect(page.locator(".variable-value")).toHaveCount(4);
+
+  const outcome = await page.evaluate(() => {
+    const [first, second] = [
+      ...document.querySelectorAll<HTMLInputElement>(".variable-value"),
+    ];
+    if (!first || !second) throw new Error("Expected two variable controls");
+    const before = second.value;
+    first.value = "12px";
+    first.dispatchEvent(new Event("change", { bubbles: true }));
+    second.value = "7s";
+    second.dispatchEvent(new Event("change", { bubbles: true }));
+    return { before, after: second.value };
+  });
+
+  expect(outcome.after).toBe(outcome.before);
+  await expect(page.locator("#live-region")).toHaveText(/source changed/i);
+  await expect(page.locator(".cm-content")).toContainText("--dot-size: 12px");
+  await expect(page.locator(".cm-content")).not.toContainText("--period: 7s");
+
+  await expect(page.locator("iframe")).toHaveAttribute(
+    "data-source-version",
+    "1",
+  );
+  const rearmed = page.locator(".variable-value").nth(1);
+  await rearmed.fill("7s");
+  await rearmed.press("Tab");
+  await expect(page.locator(".cm-content")).toContainText("--period: 7s");
+});
+
+test("refuses a stale slider gesture once and leaves source untouched", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await expect(page.getByLabel("dot size range")).toBeVisible();
+
+  const outcome = await page.evaluate(async () => {
+    const period = document.querySelector<HTMLInputElement>(
+      '[aria-label="period value"]',
+    );
+    const slider = document.querySelector<HTMLInputElement>(
+      '[aria-label="dot size range"]',
+    );
+    const live = document.querySelector("#live-region");
+    if (!period || !slider || !live)
+      throw new Error("Expected variable controls and live region");
+    const announcements: string[] = [];
+    const observer = new MutationObserver(() => {
+      announcements.push(live.textContent ?? "");
+    });
+    observer.observe(live, {
+      childList: true,
+      characterData: true,
+      subtree: true,
+    });
+
+    period.value = "2s";
+    period.dispatchEvent(new Event("change", { bubbles: true }));
+    slider.dispatchEvent(
+      new PointerEvent("pointerdown", { bubbles: true, pointerId: 17 }),
+    );
+    slider.value = "12";
+    slider.dispatchEvent(new Event("input", { bubbles: true }));
+    slider.value = "14";
+    slider.dispatchEvent(new Event("input", { bubbles: true }));
+    slider.dispatchEvent(
+      new PointerEvent("pointerup", { bubbles: true, pointerId: 17 }),
+    );
+    await new Promise<void>((resolve) =>
+      requestAnimationFrame(() => resolve()),
+    );
+    observer.disconnect();
+    return {
+      announcements: announcements.filter((message) =>
+        message.includes("variable edit was not applied"),
+      ).length,
+      sliderValue: slider.value,
+    };
+  });
+
+  expect(outcome).toEqual({ announcements: 1, sliderValue: "9" });
+  await expect(page.locator(".cm-content")).toContainText("--period: 2s");
+  await expect(page.locator(".cm-content")).toContainText("--dot-size: 9px");
+  await expect(page.locator(".cm-content")).not.toContainText(
+    "--dot-size: 14px",
+  );
+});
+
 test("coalesces a slider pointer gesture into one undo step", async ({
   page,
 }) => {

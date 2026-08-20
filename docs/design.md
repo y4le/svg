@@ -383,11 +383,13 @@ second namespaced/data schema in parallel.
 
 ### Source updates and undo
 
-Variable controls hold the source version and exact literal range from which
-they were derived. Continuous manipulation is throttled to animation frames,
-updates only that range, and commits as one undoable gesture. If concurrent
-typing invalidates the range, stop the gesture and re-resolve; never write at
-an old offset.
+Variable controls hold the source version, expected literal, and exact range
+from which they were derived. A held version may advance only after its owner
+successfully applies and rebases its own exact edit; other controls remain
+stale until the next valid publish replaces them. Continuous manipulation
+updates only that range and commits as one undoable gesture. If concurrent
+typing invalidates the range, stop the gesture and wait for that publish; never
+re-resolve during commit or write at an old offset.
 
 `Escape` or `pointercancel` abandons a control gesture, restores its original
 literal, and creates no history entry. A committed gesture produces one undo
@@ -457,9 +459,10 @@ without becoming a second document authority:
   add value micro-parsers only for features the core supports;
 - `DocumentFacts`: mapped elements, references, controls, and animation records
   needed by the code-forward workbench;
-- `EditIntent`: source-version precondition, semantic target, numeric-format
-  policy, and intended value; one compiler produces non-overlapping text
-  changes, a CodeMirror transaction, selection result, and undo grouping;
+- `EditIntent`: source-version and expected-text preconditions, semantic target,
+  numeric-format policy, and intended value; one compiler produces
+  non-overlapping text changes, a CodeMirror transaction, selection result, and
+  undo grouping;
 - `PreviewSession`: disposable rendered DOM, animation clocks, hit-test maps,
   and overlays.
 

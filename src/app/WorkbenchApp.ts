@@ -5,12 +5,13 @@ import {
   formatSteppedNumber,
   replaceIntent,
 } from "../document/editIntent";
-import { sourceVersion } from "../document/source";
+import { sourceVersion, type SourceVersion } from "../document/source";
 import {
   alignPreviewElements,
   SourceIndex,
   type PreviewAlignment,
   type SourceElement,
+  type SourceRange,
 } from "../document/sourceIndex";
 import {
   validateSvg,
@@ -36,6 +37,7 @@ import { inspectionHorizonLabel } from "../preview/inspectionHorizon";
 import { h } from "../ui/dom";
 import {
   discoverRootVariables,
+  parseNumericLiteral,
   type SourceVariable,
 } from "../variables/discover";
 
@@ -75,14 +77,22 @@ function familyLabel(family: AnimationFamily): string {
 }
 
 interface VariableGesture {
-  readonly name: string;
+  readonly binding: VariableBinding;
   readonly original: string;
   readonly sliderOriginalValue: string;
   readonly input: HTMLInputElement;
   readonly pointerId: number;
+  version: SourceVersion;
   from: number;
   to: number;
   final: string;
+}
+
+interface VariableBinding {
+  readonly published: SourceVariable;
+  version: SourceVersion;
+  range: SourceRange;
+  value: string;
 }
 
 type SourceReveal = "none" | "follow" | "handoff";
@@ -427,6 +437,15 @@ export class WorkbenchApp {
     this.#status.textContent = this.#dirty ? "checking · changed" : "checking";
     this.#status.classList.remove("status-error");
     if (this.#gesture && !this.#applyingGesture) {
+      const gesture = this.#gesture;
+      this.#restoreVariableInput(gesture.input, gesture.binding);
+      this.#ignoredSlider = gesture.input;
+      this.#ignoredSliderValue = gesture.input.value;
+      try {
+        gesture.input.releasePointerCapture(gesture.pointerId);
+      } catch {
+        // The pointer may already have ended or capture may be unavailable.
+      }
       this.#gesture = null;
       this.#announce("Variable gesture stopped because the source changed.");
     }
@@ -843,7 +862,14 @@ export class WorkbenchApp {
       return;
     }
     this.#controls.replaceChildren(
-      ...variables.map((variable) => this.#variableControl(variable)),
+      ...variables.map((variable) =>
+        this.#variableControl({
+          published: variable,
+          version: variable.version,
+          range: variable.valueRange,
+          value: variable.value,
+        }),
+      ),
     );
     if (activeLabel) {
       const replacement = [...this.#controls.querySelectorAll("input")].find(
@@ -853,22 +879,24 @@ export class WorkbenchApp {
     }
   }
 
-  #variableControl(variable: SourceVariable): HTMLElement {
-    const value = h("input", {
+  #variableControl(binding: VariableBinding): HTMLElement {
+    const variable = binding.published;
+    const valueInput = h("input", {
       className: "variable-value",
       type: "text",
-      value: variable.value,
+      value: binding.value,
       spellcheck: false,
       "aria-label": `${variable.label} value`,
       title: `${variable.name} · ${variable.usageCount} use${variable.usageCount === 1 ? "" : "s"}`,
       onchange: (event) => {
         const input = event.currentTarget as HTMLInputElement;
-        this.#commitVariable(variable, input.value.trim(), input);
+        this.#commitVariable(binding, input.value.trim(), input);
+        input.value = binding.value;
       },
     });
     const children: Node[] = [
       h("span", { className: "variable-label" }, variable.label),
-      value,
+      valueInput,
     ];
 
     if (variable.directive && variable.numeric) {
@@ -882,7 +910,7 @@ export class WorkbenchApp {
         value: variable.numeric.value,
         "aria-label": `${variable.label} range`,
         onpointerdown: (event) =>
-          this.#beginVariableGesture(variable, event as PointerEvent),
+          this.#beginVariableGesture(binding, event as PointerEvent),
         oninput: (event) => {
           const input = event.currentTarget as HTMLInputElement;
           if (this.#ignoredSlider === input) {
@@ -890,10 +918,13 @@ export class WorkbenchApp {
             return;
           }
           const literal = `${formatSteppedNumber(Number(input.value), step)}${variable.numeric!.unit}`;
-          if (this.#gesture?.input === input)
+          if (this.#gesture?.input === input) {
             this.#updateVariableGesture(literal);
-          else this.#commitVariable(variable, literal, input);
-          value.value = literal;
+            valueInput.value = this.#gesture?.final ?? binding.value;
+          } else {
+            this.#commitVariable(binding, literal, input);
+            valueInput.value = binding.value;
+          }
         },
         onpointerup: (event) =>
           this.#finishSliderPointer(event.currentTarget as HTMLInputElement),
@@ -916,51 +947,52 @@ export class WorkbenchApp {
   }
 
   #commitVariable(
-    variable: SourceVariable,
+    binding: VariableBinding,
     literal: string,
     input: HTMLInputElement,
-  ): void {
-    const resolved = this.#resolveVariable(variable.name);
-    if (!literal || !resolved) {
-      input.value = variable.value;
-      this.#announce("The variable no longer has an editable source value.");
-      return;
+  ): boolean {
+    if (!literal) {
+      this.#restoreVariableInput(input, binding);
+      this.#announce("Variable values cannot be empty.");
+      return false;
     }
     const applied = applyEditIntent(
       this.editor,
       sourceVersion(this.#version),
-      replaceIntent(
-        resolved.index.version,
-        resolved.variable.valueRange,
-        literal,
-      ),
+      replaceIntent(binding.version, binding.range, literal, binding.value),
       { isolate: true },
     );
     if (!applied) {
-      input.value = variable.value;
-      this.#announce(
-        "The variable changed in source; the edit was not applied.",
-      );
+      this.#restoreVariableInput(input, binding);
+      this.#announceStaleVariable();
+      return false;
     }
+    this.#rebaseVariableBinding(binding, literal);
+    this.#restoreVariableInput(input, binding);
+    return true;
   }
 
-  #beginVariableGesture(variable: SourceVariable, event: PointerEvent): void {
-    const resolved = this.#resolveVariable(variable.name);
-    if (!resolved) return;
+  #beginVariableGesture(binding: VariableBinding, event: PointerEvent): void {
+    const input = event.currentTarget as HTMLInputElement;
+    if (!this.#variableBindingIsCurrent(binding)) {
+      this.#ignoreSlider(input, binding);
+      this.#announceStaleVariable();
+      return;
+    }
     window.clearTimeout(this.#previewTimer);
     this.#previewTimer = undefined;
-    const input = event.currentTarget as HTMLInputElement;
     this.#ignoredSlider = null;
     this.#ignoredSliderValue = "";
     this.#gesture = {
-      name: variable.name,
-      original: resolved.variable.value,
+      binding,
+      original: binding.value,
       sliderOriginalValue: input.value,
       input,
       pointerId: event.pointerId,
-      from: resolved.variable.valueRange.from,
-      to: resolved.variable.valueRange.to,
-      final: resolved.variable.value,
+      version: binding.version,
+      from: binding.range.from,
+      to: binding.range.to,
+      final: binding.value,
     };
     try {
       input.setPointerCapture(event.pointerId);
@@ -973,54 +1005,78 @@ export class WorkbenchApp {
     const gesture = this.#gesture;
     if (!gesture) return;
     this.#applyingGesture = true;
-    const applied = applyEditIntent(
-      this.editor,
-      sourceVersion(this.#version),
-      replaceIntent(
+    let applied: boolean;
+    try {
+      applied = applyEditIntent(
+        this.editor,
         sourceVersion(this.#version),
-        { from: gesture.from, to: gesture.to },
-        literal,
-      ),
-      { addToHistory: false },
-    );
-    this.#applyingGesture = false;
-    if (!applied) return this.#cancelVariableGesture(false);
+        replaceIntent(
+          gesture.version,
+          { from: gesture.from, to: gesture.to },
+          literal,
+          gesture.final,
+        ),
+        { addToHistory: false },
+      );
+    } finally {
+      this.#applyingGesture = false;
+    }
+    if (!applied) return this.#abandonVariableGesture(false);
     gesture.to = gesture.from + literal.length;
+    gesture.version = sourceVersion(this.#version);
     gesture.final = literal;
-    this.preview.root?.style.setProperty(gesture.name, literal);
+    this.preview.root?.style.setProperty(
+      gesture.binding.published.name,
+      literal,
+    );
   }
 
   #commitVariableGesture(): void {
     const gesture = this.#gesture;
     if (!gesture) return;
     if (gesture.final === gesture.original) {
+      this.#rebaseVariableBinding(gesture.binding, gesture.original);
       this.#gesture = null;
       if (!this.#index) this.#validateAndPublish();
       return;
     }
     this.#applyingGesture = true;
-    applyEditIntent(
-      this.editor,
-      sourceVersion(this.#version),
-      replaceIntent(
+    let reverted: boolean;
+    let committed = false;
+    try {
+      reverted = applyEditIntent(
+        this.editor,
         sourceVersion(this.#version),
-        { from: gesture.from, to: gesture.to },
-        gesture.original,
-      ),
-      { addToHistory: false },
-    );
-    gesture.to = gesture.from + gesture.original.length;
-    applyEditIntent(
-      this.editor,
-      sourceVersion(this.#version),
-      replaceIntent(
-        sourceVersion(this.#version),
-        { from: gesture.from, to: gesture.to },
-        gesture.final,
-      ),
-      { isolate: true },
-    );
-    this.#applyingGesture = false;
+        replaceIntent(
+          gesture.version,
+          { from: gesture.from, to: gesture.to },
+          gesture.original,
+          gesture.final,
+        ),
+        { addToHistory: false },
+      );
+      if (reverted) {
+        gesture.to = gesture.from + gesture.original.length;
+        gesture.version = sourceVersion(this.#version);
+        committed = applyEditIntent(
+          this.editor,
+          sourceVersion(this.#version),
+          replaceIntent(
+            gesture.version,
+            { from: gesture.from, to: gesture.to },
+            gesture.final,
+            gesture.original,
+          ),
+          { isolate: true },
+        );
+      }
+    } finally {
+      this.#applyingGesture = false;
+    }
+    if (!reverted || !committed) return this.#abandonVariableGesture(true);
+    gesture.to = gesture.from + gesture.final.length;
+    gesture.version = sourceVersion(this.#version);
+    this.#rebaseVariableBinding(gesture.binding, gesture.final);
     this.#gesture = null;
     this.#scheduleRecovery();
     this.#validateAndPublish();
@@ -1030,18 +1086,28 @@ export class WorkbenchApp {
     const gesture = this.#gesture;
     if (!gesture) return;
     this.#applyingGesture = true;
-    applyEditIntent(
-      this.editor,
-      sourceVersion(this.#version),
-      replaceIntent(
+    let applied: boolean;
+    try {
+      applied = applyEditIntent(
+        this.editor,
         sourceVersion(this.#version),
-        { from: gesture.from, to: gesture.to },
-        gesture.original,
-      ),
-      { addToHistory: false },
+        replaceIntent(
+          gesture.version,
+          { from: gesture.from, to: gesture.to },
+          gesture.original,
+          gesture.final,
+        ),
+        { addToHistory: false },
+      );
+    } finally {
+      this.#applyingGesture = false;
+    }
+    if (!applied) return this.#abandonVariableGesture(pointerEnded);
+    this.#rebaseVariableBinding(gesture.binding, gesture.original);
+    this.preview.root?.style.setProperty(
+      gesture.binding.published.name,
+      gesture.original,
     );
-    this.#applyingGesture = false;
-    this.preview.root?.style.setProperty(gesture.name, gesture.original);
     gesture.input.value = gesture.sliderOriginalValue;
     if (!pointerEnded) {
       this.#ignoredSlider = gesture.input;
@@ -1057,6 +1123,17 @@ export class WorkbenchApp {
     this.#validateAndPublish();
   }
 
+  #abandonVariableGesture(pointerEnded: boolean): void {
+    const gesture = this.#gesture;
+    if (!gesture) return;
+    this.#restoreVariableInput(gesture.input, gesture.binding);
+    if (!pointerEnded) this.#ignoreSlider(gesture.input, gesture.binding);
+    this.#gesture = null;
+    this.#announce("The source changed; the variable gesture stopped.");
+    this.#scheduleRecovery();
+    this.#validateAndPublish();
+  }
+
   #finishSliderPointer(input: HTMLInputElement): void {
     if (this.#ignoredSlider === input) {
       this.#ignoredSlider = null;
@@ -1066,16 +1143,43 @@ export class WorkbenchApp {
     this.#commitVariableGesture();
   }
 
-  #resolveVariable(
-    name: string,
-  ): { index: SourceIndex; variable: SourceVariable } | null {
-    const validation = validateSvg(this.#source);
-    if (!validation.ok) return null;
-    const index = new SourceIndex(this.#source, sourceVersion(this.#version));
-    const variable = discoverRootVariables(index, validation.document).find(
-      (candidate) => candidate.name === name,
+  #variableBindingIsCurrent(binding: VariableBinding): boolean {
+    return (
+      binding.version === sourceVersion(this.#version) &&
+      this.editor.state.doc.sliceString(
+        binding.range.from,
+        binding.range.to,
+      ) === binding.value
     );
-    return variable ? { index, variable } : null;
+  }
+
+  #rebaseVariableBinding(binding: VariableBinding, literal: string): void {
+    binding.version = sourceVersion(this.#version);
+    binding.range = {
+      from: binding.range.from,
+      to: binding.range.from + literal.length,
+    };
+    binding.value = literal;
+  }
+
+  #restoreVariableInput(
+    input: HTMLInputElement,
+    binding: VariableBinding,
+  ): void {
+    input.value =
+      input.type === "range"
+        ? String(parseNumericLiteral(binding.value)?.value ?? input.value)
+        : binding.value;
+  }
+
+  #ignoreSlider(input: HTMLInputElement, binding: VariableBinding): void {
+    this.#restoreVariableInput(input, binding);
+    this.#ignoredSlider = input;
+    this.#ignoredSliderValue = input.value;
+  }
+
+  #announceStaleVariable(): void {
+    this.#announce("The source changed; the variable edit was not applied.");
   }
 
   #beginFilenameEdit(): void {

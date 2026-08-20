@@ -8,14 +8,16 @@ export interface EditIntent {
   readonly version: SourceVersion;
   readonly range: SourceRange;
   readonly insert: string;
+  readonly expect: string;
 }
 
 export function replaceIntent(
   version: SourceVersion,
   range: SourceRange,
   insert: string,
+  expect: string,
 ): EditIntent {
-  return { version, range, insert };
+  return { version, range, insert, expect };
 }
 
 export function applyEditIntent(
@@ -25,6 +27,11 @@ export function applyEditIntent(
   options: { addToHistory?: boolean; isolate?: boolean } = {},
 ): boolean {
   if (intent.version !== currentVersion) return false;
+  if (
+    view.state.doc.sliceString(intent.range.from, intent.range.to) !==
+    intent.expect
+  )
+    return false;
   const annotations = [];
   if (options.addToHistory === false)
     annotations.push(Transaction.addToHistory.of(false));

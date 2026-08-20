@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { parseControlDirective, parseNumericLiteral } from "./discover";
+import { sourceVersion } from "../document/source";
+import { SourceIndex } from "../document/sourceIndex";
+import {
+  discoverRootVariables,
+  parseControlDirective,
+  parseNumericLiteral,
+} from "./discover";
 
 describe("variable discovery", () => {
   it("parses XML-safe bounded control directives", () => {
@@ -27,5 +33,20 @@ describe("variable discovery", () => {
       unit: "ms",
     });
     expect(parseNumericLiteral("#c1432e")).toBeNull();
+  });
+
+  it("carries the source version with each exact variable range", () => {
+    const source =
+      '<svg xmlns="http://www.w3.org/2000/svg" style="--radius: 9px"><circle r="var(--radius)" /></svg>';
+    const index = new SourceIndex(source, sourceVersion(12));
+    const parsedDocument = {
+      documentElement: { childNodes: [] },
+    } as unknown as XMLDocument;
+    const [variable] = discoverRootVariables(index, parsedDocument);
+    expect(variable).toBeDefined();
+    expect(variable!.version).toBe(12);
+    expect(
+      source.slice(variable!.valueRange.from, variable!.valueRange.to),
+    ).toBe("9px");
   });
 });

@@ -1,5 +1,6 @@
 import type { SourceRange } from "../document/sourceIndex";
 import type { SourceIndex } from "../document/sourceIndex";
+import type { SourceVersion } from "../document/source";
 
 export interface ControlDirective {
   readonly name: string;
@@ -15,6 +16,7 @@ export interface NumericLiteral {
 }
 
 export interface SourceVariable {
+  readonly version: SourceVersion;
   readonly name: string;
   readonly label: string;
   readonly value: string;
@@ -102,6 +104,7 @@ export function discoverRootVariables(
       ].length,
     );
     variables.push({
+      version: index.version,
       name: match[1],
       label: match[1].slice(2).replace(/-/g, " "),
       value: trimmed,

@@ -77,7 +77,9 @@ application.
 
 Invalid source shows a diagnostic and leaves the last valid preview visibly
 stale. Generated instances map to their honest source owner. Disabled scripts
-are reported. Inferred variable ranges are not presented as authored truth.
+are reported, and disabled-capability counts describe what hardening actually
+neutralizes rather than embedded references it preserves. Inferred variable
+ranges are not presented as authored truth.
 
 ### Local and safe by default
 

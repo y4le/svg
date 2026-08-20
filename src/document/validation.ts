@@ -72,9 +72,8 @@ function countDisabledCapabilities(root: Element): DisabledCapabilities {
       }
       if (
         attributeName === "srcset" ||
-        attributeName === "poster" ||
-        (attributeName === "data" && localName === "object") ||
-        ((attributeName === "action" || attributeName === "formaction") &&
+        ((attributeName === "poster" ||
+          (attributeName === "data" && localName === "object")) &&
           !isEmbeddedReference(attribute.value))
       ) {
         externalReferences += 1;

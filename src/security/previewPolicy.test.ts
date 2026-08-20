@@ -37,4 +37,23 @@ describe("preview resource policy", () => {
       ' .x { fill: url(#paint); mask: url("#__svg_workbench_blocked__") }',
     );
   });
+
+  it.each([
+    '@\\69 mport url("https://cdn.test/escaped.css");',
+    '@import/**/url("https://cdn.test/comment-gap.css");',
+  ])(
+    "neutralizes an import spelling that bypasses the import matcher: %s",
+    (css) => {
+      expect(countBlockedCssReferences(css)).toBe(1);
+      expect(neutralizeCssReferences(css)).toContain(
+        'url("#__svg_workbench_blocked__")',
+      );
+    },
+  );
+
+  it("conservatively removes an import-like sequence inside a CSS comment", () => {
+    const css = '/* @import url("https://cdn.test/comment.css"); */';
+    expect(countBlockedCssReferences(css)).toBe(1);
+    expect(neutralizeCssReferences(css)).toBe("/*  */");
+  });
 });

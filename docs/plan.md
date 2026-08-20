@@ -251,9 +251,10 @@ Acceptance checks:
   retain one-undo behavior without reparsing the whole source per commit; a
   refused stale command restores the visible value, announces the refusal, and
   re-arms only when the next valid source version publishes controls;
-- focused unit cases enumerate hostile validation and hardening inputs,
-  including namespaced references, foreign content, embedded documents,
-  navigation, inline handlers, and CSS imports/URLs;
+- focused browser-module cases enumerate hostile validation and hardening
+  inputs against native XML/DOM semantics, including namespaced references,
+  foreign content, embedded documents, navigation, inline handlers, and CSS
+  imports/URLs;
 - false-valued DOM properties are represented intentionally, dead styles and
   redundant breadcrumb/active-option updates are removed without suppressing
   live overlay geometry, Node 24 is declared alongside CI, ignored generated

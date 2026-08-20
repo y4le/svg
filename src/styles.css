@@ -162,10 +162,6 @@ button {
   color: var(--muted);
 }
 
-.status-muted {
-  color: var(--muted);
-}
-
 .status-error {
   color: var(--accent);
 }
@@ -351,27 +347,6 @@ button {
 
 .recovery-notice[hidden] {
   display: none;
-}
-
-.empty-state {
-  display: grid;
-  align-content: center;
-  justify-items: center;
-  min-height: 100%;
-  padding: 24px;
-  color: var(--muted);
-  text-align: center;
-}
-
-.empty-state p {
-  margin: 2px 0;
-  font-size: 13px;
-}
-
-.empty-state .quiet {
-  color: var(--faint);
-  font-family: "Geist Mono Variable", "Geist Mono", monospace;
-  font-size: 11px;
 }
 
 .instrument-rail {

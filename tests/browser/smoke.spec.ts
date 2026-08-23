@@ -96,6 +96,9 @@ test("keeps the public shell policy compatible with the SVG instrument", async (
   expect(policy).toContain("default-src 'none'");
   expect(policy).toContain("script-src 'self'");
   expect(policy).toContain("worker-src 'none'");
+  expect(policy).toContain(
+    "connect-src 'self' https://raw.githubusercontent.com;",
+  );
 
   await page.evaluate(
     () =>

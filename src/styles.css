@@ -34,7 +34,8 @@ body {
 }
 
 button,
-input {
+input,
+select {
   font: inherit;
 }
 
@@ -56,6 +57,7 @@ button:hover:not(:disabled) {
 
 button:focus-visible,
 input:focus-visible,
+select:focus-visible,
 [tabindex]:focus-visible {
   outline: 1px solid var(--focus);
   outline-offset: -2px;
@@ -236,22 +238,64 @@ button {
   font-family: "Geist Mono Variable", "Geist Mono", monospace;
 }
 
+.pane-header-details,
+.preview-theme {
+  display: flex;
+  align-items: center;
+}
+
+.pane-header-details {
+  min-width: 0;
+  gap: 10px;
+}
+
+.pane-header-details .pane-meta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.preview-theme {
+  flex: none;
+  gap: 5px;
+  color: var(--faint);
+}
+
+.preview-theme-select {
+  height: 24px;
+  padding-inline: 5px;
+  border: 0;
+  border-left: 1px solid var(--rule);
+  border-radius: 0;
+  color: var(--ink);
+  background: transparent;
+  font-family: "Geist Mono Variable", "Geist Mono", monospace;
+  font-size: 11px;
+}
+
 .preview-stage {
+  --preview-background: #11110f;
+  --preview-check: #171714;
   position: relative;
   min-width: 0;
   min-height: 0;
-  background-color: #11110f;
+  background-color: var(--preview-background);
   background-image:
-    linear-gradient(45deg, #171714 25%, transparent 25%),
-    linear-gradient(-45deg, #171714 25%, transparent 25%),
-    linear-gradient(45deg, transparent 75%, #171714 75%),
-    linear-gradient(-45deg, transparent 75%, #171714 75%);
+    linear-gradient(45deg, var(--preview-check) 25%, transparent 25%),
+    linear-gradient(-45deg, var(--preview-check) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, var(--preview-check) 75%),
+    linear-gradient(-45deg, transparent 75%, var(--preview-check) 75%);
   background-position:
     0 0,
     0 8px,
     8px -8px,
     -8px 0;
   background-size: 16px 16px;
+}
+
+.preview-stage[data-document-theme="light"] {
+  --preview-background: #e8e3d5;
+  --preview-check: #ded8c9;
 }
 
 .editor-host,

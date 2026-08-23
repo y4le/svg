@@ -36,6 +36,7 @@ import {
   PreviewSession,
   type AnimationFamily,
   type PlaybackState,
+  type PreviewColorScheme,
 } from "../preview/PreviewSession";
 import { inspectionHorizonLabel } from "../preview/inspectionHorizon";
 import { DemoMenu } from "../ui/DemoMenu";
@@ -129,6 +130,8 @@ export class WorkbenchApp {
   #previewTimer: number | undefined;
   #status: HTMLSpanElement;
   #previewMeta: HTMLSpanElement;
+  #previewTheme: HTMLSelectElement;
+  #previewStage: HTMLDivElement;
   #diagnostic: HTMLDivElement;
   #liveRegion: HTMLDivElement;
   #pauseButton: HTMLButtonElement;
@@ -188,7 +191,8 @@ export class WorkbenchApp {
     this.#demos = options.demos ?? [];
     this.#pendingInitialDemo = options.initialDemo ?? null;
     const editorHost = h("div", { className: "editor-host" });
-    const previewStage = h("div", { className: "preview-stage" });
+    this.#previewStage = h("div", { className: "preview-stage" });
+    const previewStage = this.#previewStage;
     const inspectorHelp = h(
       "span",
       { className: "sr-only", id: "preview-inspector-help" },
@@ -314,6 +318,22 @@ export class WorkbenchApp {
       className: "pane-meta",
       textContent: "starting",
     });
+    this.#previewTheme = h(
+      "select",
+      {
+        className: "preview-theme-select",
+        "aria-label": "Rendered SVG theme",
+        title: "Preview-only document color scheme",
+        onchange: (event) =>
+          this.#setPreviewTheme(
+            (event.currentTarget as HTMLSelectElement)
+              .value as PreviewColorScheme,
+          ),
+      },
+      h("option", { value: "auto" }, "auto"),
+      h("option", { value: "light" }, "light"),
+      h("option", { value: "dark" }, "dark"),
+    );
     this.#diagnostic = h("div", {
       className: "diagnostic",
       role: "status",
@@ -424,7 +444,17 @@ export class WorkbenchApp {
             "header",
             { className: "pane-header" },
             h("h2", { id: "preview-title" }, "preview"),
-            this.#previewMeta,
+            h(
+              "div",
+              { className: "pane-header-details" },
+              this.#previewMeta,
+              h(
+                "label",
+                { className: "preview-theme" },
+                h("span", {}, "theme"),
+                this.#previewTheme,
+              ),
+            ),
           ),
           h(
             "div",
@@ -585,6 +615,17 @@ export class WorkbenchApp {
   #togglePlayback(): void {
     if (this.preview.state.paused) this.preview.play();
     else this.preview.pause();
+  }
+
+  #setPreviewTheme(colorScheme: PreviewColorScheme): void {
+    this.preview.setColorScheme(colorScheme);
+    this.#previewStage.dataset.documentTheme = colorScheme;
+    this.#scheduleSelectionGeometry();
+    this.#announce(
+      colorScheme === "auto"
+        ? "Rendered SVG theme follows the authored color scheme."
+        : `Rendered SVG theme set to ${colorScheme}.`,
+    );
   }
 
   async #restart(): Promise<void> {

@@ -703,11 +703,14 @@ test("walks rendered elements by keyboard and hands focus back to source", async
   await page.getByRole("button", { name: "Pause animation" }).click();
 
   const inspector = page.getByRole("listbox", { name: "Rendered elements" });
-  const option = page.getByRole("option");
+  const option = inspector.getByRole("option");
+  const theme = page.getByLabel("Rendered SVG theme");
   await expect(inspector).toHaveAttribute("tabindex", "0");
   await expect(page.locator("iframe")).toHaveAttribute("tabindex", "-1");
   await page.locator(".cm-content").focus();
   await page.keyboard.press("Escape");
+  await page.keyboard.press("Tab");
+  await expect(theme).toBeFocused();
   await page.keyboard.press("Tab");
   await expect(inspector).toBeFocused();
   await expect(inspector).toHaveCSS("outline-style", "solid");
@@ -767,7 +770,7 @@ test("announces when keyboard preview selection is unavailable", async ({
     "Preview is held at the last valid source; selection is unavailable.",
   );
   await expect(inspector).not.toHaveAttribute("aria-activedescendant", /.+/);
-  await expect(page.getByRole("option")).toHaveAttribute(
+  await expect(inspector.getByRole("option")).toHaveAttribute(
     "aria-selected",
     "false",
   );

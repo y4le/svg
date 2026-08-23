@@ -10,6 +10,7 @@ import {
 } from "./inspectionHorizon";
 
 export type AnimationFamily = "none" | "css" | "smil" | "mixed";
+export type PreviewColorScheme = "auto" | "light" | "dark";
 
 export interface PlaybackState {
   readonly paused: boolean;
@@ -20,6 +21,13 @@ export interface PlaybackState {
 
 interface PreviewCallbacks {
   readonly onPlaybackChange: (state: PlaybackState) => void;
+}
+
+interface AuthoredColorScheme {
+  readonly styleValue: string;
+  readonly stylePriority: string;
+  readonly dataAttributePresent: boolean;
+  readonly dataAttributeValue: string;
 }
 
 const TRUSTED_SHELL = `<!doctype html>
@@ -49,6 +57,8 @@ export class PreviewSession {
     fallback: "static",
   };
   #callbacks: PreviewCallbacks;
+  #colorScheme: PreviewColorScheme = "auto";
+  #authoredColorScheme: AuthoredColorScheme | null = null;
 
   constructor(container: HTMLElement, callbacks: PreviewCallbacks) {
     this.#callbacks = callbacks;
@@ -80,9 +90,18 @@ export class PreviewSession {
     return this.iframe.contentDocument;
   }
 
+  get colorScheme(): PreviewColorScheme {
+    return this.#colorScheme;
+  }
+
   get root(): SVGSVGElement | null {
     const root = this.document?.body.firstElementChild;
     return root?.localName === "svg" ? (root as SVGSVGElement) : null;
+  }
+
+  setColorScheme(colorScheme: PreviewColorScheme): void {
+    this.#colorScheme = colorScheme;
+    this.#applyColorScheme();
   }
 
   async publish(
@@ -114,9 +133,11 @@ export class PreviewSession {
     const imported = frameDocument.importNode(
       validation.document.documentElement,
       true,
-    );
+    ) as unknown as SVGSVGElement;
     hardenImportedSvg(imported);
     frameDocument.body.replaceChildren(imported);
+    this.#captureAuthoredColorScheme(imported);
+    this.#applyColorScheme();
     await this.#nextFrame();
     if (generation !== this.#generation) return;
 
@@ -175,6 +196,45 @@ export class PreviewSession {
   destroy(): void {
     this.#generation += 1;
     this.iframe.remove();
+  }
+
+  #captureAuthoredColorScheme(root: SVGSVGElement): void {
+    this.#authoredColorScheme = {
+      styleValue: root.style.getPropertyValue("color-scheme"),
+      stylePriority: root.style.getPropertyPriority("color-scheme"),
+      dataAttributePresent: root.hasAttribute("data-color-scheme"),
+      dataAttributeValue: root.getAttribute("data-color-scheme") ?? "",
+    };
+  }
+
+  #applyColorScheme(): void {
+    const root = this.root;
+    const authored = this.#authoredColorScheme;
+    if (!root || !authored) return;
+
+    if (authored.styleValue) {
+      root.style.setProperty(
+        "color-scheme",
+        authored.styleValue,
+        authored.stylePriority,
+      );
+    } else {
+      root.style.removeProperty("color-scheme");
+      if (!root.getAttribute("style")?.trim()) root.removeAttribute("style");
+    }
+    if (authored.dataAttributePresent) {
+      root.setAttribute("data-color-scheme", authored.dataAttributeValue);
+    } else {
+      root.removeAttribute("data-color-scheme");
+    }
+
+    if (this.#colorScheme === "auto") return;
+    root.style.setProperty(
+      "color-scheme",
+      `only ${this.#colorScheme}`,
+      "important",
+    );
+    root.setAttribute("data-color-scheme", this.#colorScheme);
   }
 
   #animations(): Animation[] {

@@ -18,6 +18,10 @@ import {
   formatDiagnostic,
   type ValidSvg,
 } from "../document/validation";
+import { withDemoShortname } from "../demos/demoUrl";
+import { DemoLoadError, loadDemo } from "../demos/loadDemo";
+import type { DemoEntry } from "../demos/manifest";
+import { findDemo } from "../demos/registry";
 import { createEditor } from "../editor/createEditor";
 import { DEFAULT_SVG } from "../examples/default";
 import { FileEnvelope } from "../files/FileEnvelope";
@@ -34,6 +38,7 @@ import {
   type PlaybackState,
 } from "../preview/PreviewSession";
 import { inspectionHorizonLabel } from "../preview/inspectionHorizon";
+import { DemoMenu } from "../ui/DemoMenu";
 import { h } from "../ui/dom";
 import {
   discoverRootVariables,
@@ -98,6 +103,22 @@ interface VariableBinding {
 type SourceReveal = "none" | "follow" | "handoff";
 type RecoveryState = "probing" | "offering" | "active" | "unavailable";
 
+export interface WorkbenchOptions {
+  readonly demos?: readonly DemoEntry[];
+  readonly initialDemo?: string | null;
+}
+
+function isTextEntry(target: EventTarget | null): boolean {
+  return (
+    target instanceof Element &&
+    Boolean(
+      target.closest(
+        'input, select, textarea, [contenteditable]:not([contenteditable="false"]), .cm-editor',
+      ),
+    )
+  );
+}
+
 export class WorkbenchApp {
   readonly root: HTMLElement;
   readonly editor: EditorView;
@@ -153,9 +174,19 @@ export class WorkbenchApp {
   #recoveryChain: Promise<void> = Promise.resolve();
   #pendingDownloadRecovery: RecoveryRecord | null = null;
   #downloadUnconfirmed = false;
+  readonly #demos: readonly DemoEntry[];
+  #demoButton: HTMLButtonElement;
+  #demoMenu: DemoMenu;
+  #demoNotice: HTMLDivElement;
+  #demoAbort: AbortController | null = null;
+  #demoRequest = 0;
+  #applyingDemo = false;
+  #pendingInitialDemo: string | null;
   #closed = false;
 
-  constructor(mount: HTMLElement) {
+  constructor(mount: HTMLElement, options: WorkbenchOptions = {}) {
+    this.#demos = options.demos ?? [];
+    this.#pendingInitialDemo = options.initialDemo ?? null;
     const editorHost = h("div", { className: "editor-host" });
     const previewStage = h("div", { className: "preview-stage" });
     const inspectorHelp = h(
@@ -235,6 +266,26 @@ export class WorkbenchApp {
       role: "status",
       hidden: true,
     });
+    this.#demoNotice = h("div", {
+      className: "demo-notice",
+      role: "status",
+      hidden: true,
+      "data-testid": "demo-notice",
+    });
+    this.#demoMenu = new DemoMenu(
+      this.#demos,
+      (entry) => void this.#selectDemo(entry),
+    );
+    this.#demoButton = h(
+      "button",
+      {
+        type: "button",
+        className: "demo-action",
+        title: "Open demos (Shift+D)",
+        onclick: () => this.#openDemoMenu(this.#demoButton),
+      },
+      "demos",
+    );
     this.#controls = h("div", {
       className: "variable-controls",
       "aria-label": "SVG variables",
@@ -328,6 +379,7 @@ export class WorkbenchApp {
           this.#pauseButton,
           this.#restartButton,
           h("span", { className: "rail-separator", "aria-hidden": "true" }),
+          this.#demoButton,
           h(
             "button",
             {
@@ -392,6 +444,8 @@ export class WorkbenchApp {
       inspectorHelp,
       this.#fileInput,
       this.#recoveryNotice,
+      this.#demoNotice,
+      this.#demoMenu.dialog,
     );
 
     mount.replaceChildren(shell);
@@ -410,8 +464,9 @@ export class WorkbenchApp {
       onChange: (source) => this.#onSourceChange(source),
       onSelectionChange: (position) => this.#selectFromSource(position),
     });
+    window.addEventListener("keydown", this.#handleGlobalKeydown);
     this.#validateAndPublish();
-    void this.#offerRecovery();
+    void this.#initialize();
   }
 
   destroy(): void {
@@ -420,12 +475,19 @@ export class WorkbenchApp {
     window.clearTimeout(this.#recoveryTimer);
     window.cancelAnimationFrame(this.#clockFrame ?? 0);
     window.cancelAnimationFrame(this.#geometryFrame ?? 0);
+    window.removeEventListener("keydown", this.#handleGlobalKeydown);
+    this.#abortDemoLoad();
+    this.#demoMenu.destroy();
     this.#resizeObserver.disconnect();
     this.editor.destroy();
     this.preview.destroy();
   }
 
   #onSourceChange(source: string): void {
+    if (this.#demoAbort && !this.#applyingDemo)
+      this.#cancelDemoLoad(
+        "Demo loading stopped because the current document changed.",
+      );
     this.#source = source;
     this.#version += 1;
     this.#index = null;
@@ -1185,6 +1247,10 @@ export class WorkbenchApp {
   }
 
   #beginFilenameEdit(): void {
+    if (this.#demoAbort)
+      this.#cancelDemoLoad(
+        "Demo loading stopped because the filename is being edited.",
+      );
     this.#clearFilenameError();
     this.#renaming = true;
     this.#filenameButton.hidden = true;
@@ -1225,6 +1291,10 @@ export class WorkbenchApp {
 
     const previous = this.#currentFilename;
     this.#currentFilename = filename;
+    if (filename !== previous && this.#demoAbort)
+      this.#cancelDemoLoad(
+        "Demo loading stopped because the filename changed.",
+      );
     this.#clearFilenameError();
     this.#endFilenameEdit(focusButton);
     this.#renderFilename();
@@ -1298,7 +1368,10 @@ export class WorkbenchApp {
         await file.arrayBuffer(),
       );
       if (!this.#confirmReplace(`open ${file.name}`)) return;
+      this.#pendingInitialDemo = null;
+      this.#abortDemoLoad();
       this.#loadEnvelope(envelope, envelope.source);
+      this.#setDemoOrigin(null);
       this.#announce(`${file.name} opened locally.`);
     } catch (error) {
       this.#announce(
@@ -1427,7 +1500,10 @@ export class WorkbenchApp {
     );
     this.#recoveryState = "active";
     this.#recoveryNotice.hidden = true;
+    this.#pendingInitialDemo = null;
+    this.#abortDemoLoad();
     this.#loadEnvelope(envelope, recovery.source, recovery.filename);
+    this.#setDemoOrigin(null);
     this.#announce("Recovery copy restored.");
   }
 
@@ -1439,12 +1515,14 @@ export class WorkbenchApp {
       await clearRecovery();
     } catch {
       this.#failRecovery();
+      void this.#resumeInitialDemo();
       return;
     }
     if (this.#closed) return;
     this.#recoveryNotice.hidden = true;
     this.#announce("Recovery copy discarded.");
     this.#activateRecovery();
+    void this.#resumeInitialDemo();
   }
 
   #activateRecovery(): void {
@@ -1509,5 +1587,167 @@ export class WorkbenchApp {
 
   #announce(message: string): void {
     this.#liveRegion.textContent = message;
+  }
+
+  async #initialize(): Promise<void> {
+    await this.#offerRecovery();
+    if (this.#closed || this.#recoveryState === "offering") return;
+    await this.#resumeInitialDemo();
+  }
+
+  async #resumeInitialDemo(): Promise<void> {
+    const shortname = this.#pendingInitialDemo;
+    this.#pendingInitialDemo = null;
+    if (shortname === null || this.#closed) return;
+    const entry = findDemo(this.#demos, shortname);
+    if (!entry) {
+      const suggestion = this.#demos.find(
+        (candidate) =>
+          candidate.shortname.toLowerCase() === shortname.toLowerCase(),
+      );
+      this.#showDemoNotice(
+        suggestion
+          ? `Unknown demo “${shortname}”. Did you mean “${suggestion.shortname}”?`
+          : `Unknown demo “${shortname}”. Open demos to choose a registered source.`,
+      );
+      return;
+    }
+    await this.#loadDemoEntry(entry);
+  }
+
+  #handleGlobalKeydown = (event: KeyboardEvent): void => {
+    if (
+      event.key.toLowerCase() !== "d" ||
+      !event.shiftKey ||
+      event.ctrlKey ||
+      event.metaKey ||
+      event.altKey ||
+      event.repeat ||
+      event.isComposing ||
+      isTextEntry(event.target) ||
+      this.#demoMenu.open
+    ) {
+      return;
+    }
+    event.preventDefault();
+    this.#openDemoMenu(
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : this.#demoButton,
+    );
+  };
+
+  #openDemoMenu(invoker: HTMLElement): void {
+    this.#demoMenu.show(invoker);
+  }
+
+  async #selectDemo(entry: DemoEntry): Promise<void> {
+    if (this.#recoveryState === "probing") {
+      this.#showDemoNotice(
+        "Recovery is still being checked. Try loading the demo again in a moment.",
+      );
+      return;
+    }
+    if (this.#recoveryState === "offering") {
+      this.#showDemoNotice(
+        "Restore or discard the offered recovery copy before loading a demo.",
+      );
+      return;
+    }
+    await this.#loadDemoEntry(entry);
+  }
+
+  async #loadDemoEntry(entry: DemoEntry): Promise<void> {
+    if (!this.#confirmReplace(`load the ${entry.title} demo`)) {
+      this.#announce("Demo not loaded; the current document is unchanged.");
+      return;
+    }
+    this.#abortDemoLoad();
+    const controller = new AbortController();
+    this.#demoAbort = controller;
+    const request = ++this.#demoRequest;
+    this.#showDemoNotice(
+      `Loading ${entry.title} from GitHub…`,
+      h(
+        "button",
+        {
+          type: "button",
+          onclick: () =>
+            this.#cancelDemoLoad("Demo loading cancelled; nothing changed."),
+        },
+        "cancel",
+      ),
+    );
+    this.#announce(`Loading ${entry.title} from GitHub.`);
+    try {
+      const loaded = await loadDemo(entry, { signal: controller.signal });
+      if (this.#closed || request !== this.#demoRequest) return;
+      this.#demoAbort = null;
+      this.#applyingDemo = true;
+      try {
+        this.#loadEnvelope(loaded.envelope, loaded.envelope.source);
+      } finally {
+        this.#applyingDemo = false;
+      }
+      this.#setDemoOrigin(entry.shortname);
+      this.#hideDemoNotice();
+      this.#announce(`${entry.title} loaded from GitHub.`);
+    } catch (error) {
+      if (this.#closed || request !== this.#demoRequest) return;
+      this.#demoAbort = null;
+      if (error instanceof DemoLoadError && error.code === "cancelled") return;
+      const message =
+        error instanceof Error
+          ? error.message
+          : "The demo could not be loaded from GitHub.";
+      this.#showDemoNotice(
+        message,
+        h(
+          "button",
+          {
+            type: "button",
+            onclick: () => void this.#loadDemoEntry(entry),
+          },
+          "retry",
+        ),
+      );
+      this.#announce(message);
+    }
+  }
+
+  #abortDemoLoad(): void {
+    this.#demoRequest += 1;
+    this.#demoAbort?.abort();
+    this.#demoAbort = null;
+    this.#hideDemoNotice();
+  }
+
+  #cancelDemoLoad(message: string): void {
+    const hadLoad = Boolean(this.#demoAbort);
+    this.#abortDemoLoad();
+    if (!hadLoad) return;
+    this.#showDemoNotice(message);
+    this.#announce(message);
+  }
+
+  #showDemoNotice(message: string, action?: HTMLButtonElement): void {
+    this.#demoNotice.hidden = false;
+    this.#demoNotice.replaceChildren(h("span", {}, message));
+    if (action) this.#demoNotice.append(action);
+  }
+
+  #hideDemoNotice(): void {
+    this.#demoNotice.hidden = true;
+    this.#demoNotice.replaceChildren();
+  }
+
+  #setDemoOrigin(shortname: string | null): void {
+    this.#demoMenu.setCurrent(shortname);
+    const next = withDemoShortname(new URL(window.location.href), shortname);
+    window.history.replaceState(
+      window.history.state,
+      "",
+      `${next.pathname}${next.search}${next.hash}`,
+    );
   }
 }

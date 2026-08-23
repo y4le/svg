@@ -46,6 +46,8 @@ jobs:
           test -s dist/icon.svg
           grep -q 'Content-Security-Policy' dist/index.html
           grep -q "default-src 'none'" dist/index.html
+          grep -q "connect-src 'self' https://raw.githubusercontent.com;" dist/index.html
+          ! grep -Eq "connect-src[^;]*(api.github.com|github.com[^;])" dist/index.html
           ! grep -Pq '<script(?![^>]*\bsrc=)[^>]*>' dist/index.html
           grep -q 'href="https://yalethom.as/svg/"' dist/index.html
 

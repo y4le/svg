@@ -151,6 +151,93 @@ Acceptance checks:
 - the first pushed workflow succeeds and `https://yalethom.as/svg/` serves the
   workbench through the custom domain inherited from `y4le/y4le.github.io`.
 
+## Preregistered GitHub demo roster — 2026-08-21
+
+Goal: let an author open a curated roster of SVG source hosted on GitHub from a
+quiet in-app picker or a stable `?demo=<shortname>` URL, beginning with
+`y4le/svg`'s `.yalethomas/card.svg`.
+
+Non-goals: arbitrary URL entry, GitHub authentication, repository browsing,
+background prefetch, thumbnails, caching or offline mirroring, service workers,
+search/tags for the initial roster, or relaxing preview execution and network
+policy.
+
+Affected boundaries: a typed framework-independent demo manifest and GitHub
+loader; the app-shell `connect-src` policy; document replacement, recovery, and
+filename baselines in `WorkbenchApp`; one accessible dialog and global keyboard
+accelerator; URL query state; deterministic unit and three-browser contracts.
+The fetched bytes become ordinary untrusted SVG source and never receive a
+privileged preview path.
+
+Acceptance checks:
+
+- the manifest assigns each entry a unique stable lowercase shortname,
+  filename, display copy, and structured GitHub owner/repository/ref/path;
+  entries cannot supply a hostname or arbitrary URL;
+- `?demo=card` fetches `.yalethomas/card.svg` anonymously from the now-public
+  `y4le/svg` repository, loads it through `FileEnvelope.fromBytes`, establishes
+  a clean byte-preserving baseline, and leaves invalid SVG to the ordinary
+  diagnostic and last-valid-preview behavior;
+- GitHub requests omit credentials and referrers, refuse redirects, time out,
+  enforce a streamed 512 KiB limit, fatally reject malformed UTF-8, and verify
+  a SHA-256 digest for any immutable third-party entry;
+- only `raw.githubusercontent.com` is added to the app-shell network allowlist;
+  the preview shell retains `connect-src 'none'`, scripts remain disabled, and
+  remote source passes through the same validation and hardening as local
+  source;
+- a visible demos control and Shift+D outside text-entry contexts open a native
+  modal picker; the shortcut never steals a capital D from CodeMirror, form
+  fields, contenteditable regions, or composition;
+- replacement confirmation occurs before a request, unresolved recovery takes
+  precedence over startup demo intent, cancellation or failure changes no
+  source/baseline/URL state, and superseded loads are aborted and version-bound;
+- successful selection updates `demo` with `history.replaceState`; editing,
+  renaming, and downloading retain that origin while local open or recovery
+  restore clears it; no back-stack document router is introduced;
+- unit tests cover manifest/URL constraints, byte limits, status mapping,
+  decoding, cancellation, and integrity; Playwright stubs all GitHub responses
+  and verifies URL startup, menu/shortcut access, clean download, guarded
+  replacement, recovery precedence, CSP, and hostile content in Chromium,
+  Firefox, and WebKit.
+
+## Preview document theme and parametric catalog card — 2026-08-21
+
+Goal: let an author inspect a rendered SVG under automatic, forced-light, and
+forced-dark document color schemes, and make the first catalog demo a useful
+showcase for source-backed workbench controls without changing its current
+default appearance.
+
+Non-goals: changing the workbench chrome, adding an independent canvas-theme
+system, emulating `prefers-color-scheme` media queries per iframe, rewriting
+theme declarations into source, adding a second variable schema, or turning
+the catalog card into a product-specific project format.
+
+Affected boundaries: `PreviewSession` owns a reversible preview-only root
+override; `WorkbenchApp` owns one accessible pane-header selector and geometry
+refresh; the catalog SVG exposes literal root custom properties and direct-root
+bounded-control comments; the normal source-control and demo-loading paths stay
+authoritative.
+
+Acceptance checks:
+
+- `auto` preserves the authored SVG color scheme, while `light` and `dark`
+  apply only to the imported preview root through `color-scheme` and a
+  `data-color-scheme` opt-in hook; the preview checker follows a forced choice
+  so transparent art remains legible, and returning to `auto` restores
+  authored root values rather than inventing source;
+- the selected theme survives valid source republishes without restarting the
+  document explicitly, never changes editor text or exported bytes, and keeps
+  preview selection geometry current;
+- the UI is keyboard-accessible, does not let Shift+D steal input from its
+  selector, and names the control as a rendered-SVG theme rather than an app
+  theme;
+- `.yalethomas/card.svg` retains its current light/dark colors, rule widths,
+  rotating mark typography, and four-second timing as literal root-variable
+  defaults, with meaningful numeric bounds exposed as sliders;
+- browser tests verify the two computed theme palettes, exact source
+  preservation, theme persistence, and catalog controls in Chromium, Firefox,
+  and WebKit, followed by the standard validation and browser gates.
+
 ## Document-derived inspection horizon — 2026-08-19
 
 Goal: replace the arbitrary ten-second scrubber limit with an honest coverage
@@ -279,7 +366,9 @@ CI-gated Dependabot pull requests.
   roadmap and does not expand this plan.
 - A visual animation timeline; robust code-forward animation support remains
   in scope.
-- Script execution, external libraries, or cloud collaboration.
+- Script execution, external libraries, or cloud collaboration. Explicit
+  user-invoked fetching of preregistered public SVG source from GitHub is in
+  scope; external application code and preview network access remain out.
 - AI editing, format conversion, optimization, or automatic formatting.
 - A plugin system, monorepo, backend, or design system package.
 

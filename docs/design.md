@@ -86,6 +86,9 @@ ranges are not presented as authored truth.
 Opening a file should not upload it, load its remote dependencies, execute its
 scripts, or require an account. Recovery state may live in IndexedDB. Direct
 filesystem handles are a progressive enhancement with download fallback.
+Choosing a preregistered GitHub demo makes one explicit, unauthenticated source
+request without credentials or referrer data; the workbench never prefetches a
+demo, and previewed content cannot use that network capability.
 The app shell carries a static Content Security Policy as defence in depth. It
 must remain a superset of the stricter trusted preview-shell policy so imported
 inline SVG/CSS, data and blob images, and native animation keep working inside
@@ -112,6 +115,7 @@ selection.
 - selected-element animation provenance with source navigation for supported
   SMIL and CSS declarations;
 - local open/paste/download, dirty state, and crash/session recovery;
+- a preregistered GitHub demo roster with stable shortname URLs;
 - root CSS custom-property discovery with exact value and unit controls;
 - optional explicit range directives producing restrained sliders;
 - keyboard access, reduced-motion behavior, and three-browser tests;
@@ -124,7 +128,7 @@ selection.
   handles, layers, alignment, and general WYSIWYG geometry editing;
 - visual animation timeline, keyframe generation, easing curves, morph tools,
   or animation export conversion;
-- arbitrary JavaScript execution or external runtime/CDN loading;
+- arbitrary JavaScript execution or external application runtime/CDN loading;
 - AI generation/editing, accounts, cloud files, collaboration, comments, or
   telemetry;
 - JSX, Lottie, raster, video, sprite, or design-tool export;
@@ -227,6 +231,29 @@ See `docs/visual-editing-extension.md` for its staged capability ladder.
   partially replace the preview.
 - When the document becomes valid, replace the preview atomically and restore
   selection by a structural anchor when possible.
+
+### Preview document theme
+
+The preview pane exposes `auto`, `light`, and `dark` document-theme choices.
+`auto` leaves the imported SVG's authored color-scheme state intact. A forced
+choice is a preview-only root override: `PreviewSession` applies an important
+`color-scheme: only light|dark` declaration and a matching
+`data-color-scheme` attribute, then restores the authored inline declaration
+and attribute exactly when returning to `auto`. The selector is workbench
+session state, persists across valid preview generations, and never enters the
+source, undo history, dirty state, recovery copy, or export.
+
+The hosting checker follows a forced light or dark choice so transparent SVG
+content remains legible; `auto` retains the workbench's neutral default. This
+is presentation state around the imported document, not an authored fill or a
+second canvas-theme control.
+
+This mechanism controls browser color-scheme semantics such as `light-dark()`
+and gives authored SVG an explicit attribute hook. It cannot emulate the
+environment-level `prefers-color-scheme` media feature independently inside a
+same-page iframe, so documents that theme only through that media query remain
+environment-controlled. The workbench does not claim otherwise or rewrite
+those queries.
 
 ## Visual system
 
@@ -383,6 +410,14 @@ Malformed directives or comments lost to optimization remove only the bounded
 slider; the exact value control and SVG behavior remain. Do not support a
 second namespaced/data schema in parallel.
 
+The first catalog card is also the control-system fixture. Its existing light
+and dark palette literals, accent, rule width, rotating-mark typography, and
+period live as root custom-property defaults; stylesheet declarations consume
+those values without changing the default rendering. Only meaningful numeric
+ranges receive `@control` bounds. Palette values remain exact text controls so
+the SVG stays portable and the workbench remains a generic CSS-variable
+instrument rather than a card-specific editor.
+
 ### Source updates and undo
 
 Variable controls hold the source version, expected literal, and exact range
@@ -435,6 +470,29 @@ keeps the preceding recovery copy because an anchor click does not confirm that
 bytes reached disk; replacing that document therefore requires an explicit
 choice. IndexedDB failure disables recovery for the session and is reported
 once in the workbench rather than rejecting silently.
+
+### Demo roster
+
+A typed manifest preregisters demos by stable shortname, display metadata,
+filename, and structured GitHub owner/repository/ref/path. Manifest data cannot
+name a host: the loader alone constructs URLs beneath
+`https://raw.githubusercontent.com`. First-party entries may deliberately track
+a branch. Third-party entries must name an immutable commit, exact SHA-256,
+license, and attribution before they can ship.
+
+Demo loading is an edge capability, not a second document model. The loader
+reads a response as bytes, omits credentials and referrer data, refuses
+redirects, enforces timeout and size limits while streaming, verifies pinned
+integrity, and hands the bytes to `FileEnvelope.fromBytes`. `WorkbenchApp` then
+uses the same guarded replacement path, clean baseline, editor transaction,
+validation, hardening, preview, recovery, and export behavior as a local file.
+Failure or cancellation preserves the current document and URL exactly.
+
+`?demo=<shortname>` names the origin of the current document rather than its
+live edited state. Successful picker loads use `history.replaceState`; source
+edits, renames, and downloads retain the parameter, while replacement by a
+local file or recovery copy clears it. The first slice deliberately does not
+make browser back/forward a document-replacement command.
 
 ### Proposed stack
 
@@ -575,6 +633,10 @@ prove one end-to-end variable or animation command.
   through HTML `srcdoc` or `innerHTML` parsing.
 - Apply a CSP that denies network sources and top-level navigation; install a
   parent-owned link guard for Interact mode.
+- Restrict the app shell's source-fetch capability to
+  `raw.githubusercontent.com`. The preview shell keeps `connect-src 'none'`;
+  fetched demo source has no remote/demo privilege in validation, hardening,
+  rendering, or export.
 - Treat `foreignObject`, links, embedded media, external `href`, inline event
   attributes, and scripts as explicit security fixtures.
 - Sanitization may remove prohibited capability in the preview, but must never
@@ -604,6 +666,7 @@ Technical budgets to validate, then adjust from evidence:
 - selection overlay does not materially lower a 60 fps authored animation;
 - hostile fixtures make zero script executions, network requests, navigations,
   or parent-DOM mutations;
+- the workbench remains fully usable when the GitHub demo host is unavailable;
 - Chrome, Firefox, and Safari agree on the documented animation and selection
   contract, or the UI names the browser-specific limitation.
 

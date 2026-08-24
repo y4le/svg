@@ -59,6 +59,10 @@ Vite options after `--`. The command prints the final URL and exact `unexpose`
 command. The route intentionally persists after Vite stops; inspect registered
 routes with `tailnet-dev-host status`.
 
+Browser tests use their own strict port (`SVG_E2E_PORT`, default `43174`) and
+never reuse an existing server, so a live workbench cannot be mistaken for the
+test build of another Vite project.
+
 Validation:
 
 ```sh

@@ -47,7 +47,8 @@ observed-user validation remain follow-on work.
 Goal: make the ordinary Vite launcher deterministic from any working directory
 and add an explicit Tailnet launcher that uses `tailnet-dev-host` without
 claiming or replacing unrelated shared routes. The launcher now shares HTTPS
-443 through `/svg/`.
+443 through `/svg/`, and browser tests use a separate non-reused local port so
+another Vite workspace can never satisfy their readiness probe.
 
 Non-goals: production deployment, Tailscale Funnel, automatic removal of
 persistent Serve routes, a general process supervisor, or changes to the SVG
@@ -69,6 +70,8 @@ Acceptance checks:
   prints the exact local and HTTPS URLs plus the matching `unexpose` command;
 - missing/offline Tailscale and conflicting-route cases fail with actionable
   messages without starting a misleading server or changing another route;
+- Playwright owns a dedicated strict port and refuses arbitrary existing
+  servers instead of accepting a status-only URL match;
 - shell syntax and isolated fake-helper contract tests pass, followed by
   `npm run validate`; helper dry-run and an explicitly invoked live smoke cover
   the path-scoped route without making shared Tailnet state part of automated

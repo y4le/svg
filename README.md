@@ -50,14 +50,14 @@ For HTTPS access from another device on the tailnet:
 npm run dev:tailnet
 ```
 
-This uses `tailnet-dev-host`, starts Vite on loopback, and exposes `/` on the
-dedicated Tailnet HTTPS port `4443` after refusing a live root route owned by
-another project on that port. Override the local or HTTPS port with `PORT` or
-`TAILNET_HTTPS_PORT`; pass other Vite options after `--`. The command prints the
-final URL and the exact `unexpose` command. The route intentionally persists
-after Vite stops because the shared helper does not yet provide a lease-safe
-automatic cleanup contract; inspect registered routes with
-`tailnet-dev-host status`.
+This uses `tailnet-dev-host`, starts Vite on loopback, and exposes the
+path-scoped `https://<tailnet-host>/svg/` route on the standard HTTPS port. It
+does not claim a root route, and Vite refuses an occupied local port rather
+than silently moving.
+Override the local port with `PORT` or the mount with `TAILNET_PATH`; pass other
+Vite options after `--`. The command prints the final URL and exact `unexpose`
+command. The route intentionally persists after Vite stops; inspect registered
+routes with `tailnet-dev-host status`.
 
 Validation:
 

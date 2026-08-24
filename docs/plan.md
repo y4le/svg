@@ -46,7 +46,8 @@ observed-user validation remain follow-on work.
 
 Goal: make the ordinary Vite launcher deterministic from any working directory
 and add an explicit Tailnet launcher that uses `tailnet-dev-host` without
-claiming or replacing unrelated shared routes.
+claiming or replacing unrelated shared routes. The launcher now shares HTTPS
+443 through `/svg/`.
 
 Non-goals: production deployment, Tailscale Funnel, automatic removal of
 persistent Serve routes, a general process supervisor, or changes to the SVG
@@ -63,14 +64,15 @@ Acceptance checks:
   argument/environment overrides, and reports a port conflict instead of
   silently moving;
 - the Tailnet launcher preflights its dependencies and the unfiltered route
-  table, refuses to replace another owner on its dedicated HTTPS port, starts
-  Vite before exposing the root route, configures Vite's allowed host, and
+  table, refuses to replace another owner at `/svg/`, starts Vite before
+  exposing the path-scoped route, configures Vite's base, HMR, and allowed host, and
   prints the exact local and HTTPS URLs plus the matching `unexpose` command;
 - missing/offline Tailscale and conflicting-route cases fail with actionable
   messages without starting a misleading server or changing another route;
 - shell syntax and isolated fake-helper contract tests pass, followed by
   `npm run validate`; helper dry-run and an explicitly invoked live smoke cover
-  the root route without making shared Tailnet state part of automated tests.
+  the path-scoped route without making shared Tailnet state part of automated
+  tests.
 
 ## Document filename editing — 2026-08-05
 

@@ -62,10 +62,11 @@ const [command, ...args] = process.argv.slice(2);
 fs.appendFileSync(process.env.HELPER_LOG, JSON.stringify([command, ...args]) + "\\n");
 if (command === "status" && process.env.FAKE_STATUS_EXIT) process.exit(Number(process.env.FAKE_STATUS_EXIT));
 else if (command === "status") process.stdout.write(process.env.FAKE_STATUS_JSON || '{"routes":[]}');
-else if (command === "url") process.stdout.write('{"url":"https://spark.test.ts.net:4443/"}');
+else if (command === "url") process.stdout.write('{"url":"https://spark.test.ts.net/svg/"}');
 else if (command === "expose") {
+  if (process.env.FAKE_EXPOSE_EXIT) process.exit(Number(process.env.FAKE_EXPOSE_EXIT));
   fs.writeFileSync(process.env.EXPOSE_MARKER, "");
-  process.stdout.write('{"action":"expose","url":"https://spark.test.ts.net:4443/"}');
+  process.stdout.write('{"action":"expose","url":"https://spark.test.ts.net/svg/"}');
 }
 else process.exit(2);
 `,
@@ -78,7 +79,11 @@ const fs = require("node:fs");
 const net = require("node:net");
 const args = process.argv.slice(2);
 const valueAfter = (flag) => args[args.indexOf(flag) + 1];
-fs.writeFileSync(process.env.VITE_LOG, JSON.stringify({ args, allowedHosts: process.env.DEV_ALLOWED_HOSTS }));
+fs.writeFileSync(process.env.VITE_LOG, JSON.stringify({
+  args,
+  allowedHosts: process.env.DEV_ALLOWED_HOSTS,
+  tailnetPath: process.env.SVG_TAILNET_PATH,
+}));
 const server = net.createServer((socket) => socket.end("HTTP/1.1 200 OK\\r\\nContent-Length: 0\\r\\n\\r\\n"));
 const closeServer = (status = 0) => server.close(() => process.exit(status));
 server.listen(Number(valueAfter("--port")), valueAfter("--host"), () => {
@@ -98,7 +103,7 @@ process.on("SIGTERM", () => closeServer(143));
     rmSync(tempRoot, { recursive: true, force: true });
   });
 
-  it("preflights, starts Vite, and exposes the dedicated root route", async () => {
+  it("preflights, starts Vite, and exposes the path-scoped route", async () => {
     const port = await freePort();
     const result = spawnSync("bash", [devTailnet, "--open"], {
       cwd: tempRoot,
@@ -116,13 +121,14 @@ process.on("SIGTERM", () => closeServer(143));
 
     expect(result.status, result.stderr).toBe(0);
     expect(result.stdout).toContain(
-      "tailnet URL: https://spark.test.ts.net:4443/",
+      "tailnet URL: https://spark.test.ts.net/svg/",
     );
     expect(result.stdout).toContain("the route persists after Vite stops");
 
     const vite = JSON.parse(readFileSync(viteLog, "utf8")) as {
       args: string[];
       allowedHosts: string;
+      tailnetPath: string;
     };
     expect(vite.args).toEqual([
       "--open",
@@ -135,6 +141,7 @@ process.on("SIGTERM", () => closeServer(143));
       "false",
     ]);
     expect(vite.allowedHosts).toBe("spark.test.ts.net");
+    expect(vite.tailnetPath).toBe("/svg");
 
     const helperCalls = readFileSync(helperLog, "utf8")
       .trim()
@@ -143,7 +150,6 @@ process.on("SIGTERM", () => closeServer(143));
     expect(helperCalls.map(([command]) => command)).toEqual([
       "status",
       "url",
-      "status",
       "expose",
     ]);
     expect(helperCalls.at(-1)).toEqual([
@@ -153,38 +159,23 @@ process.on("SIGTERM", () => closeServer(143));
       "--repo",
       repoRoot,
       "--path",
-      "/",
+      "/svg",
       "--port",
       String(port),
       "--host",
       "127.0.0.1",
-      "--https-port",
-      "4443",
-      "--force",
-      "--allow-root",
       "--json",
     ]);
   });
 
-  it("refuses a root route owned by another project before starting Vite", async () => {
+  it("reports a path conflict from the helper and stops Vite", async () => {
     const port = await freePort();
     const result = spawnSync("bash", [devTailnet], {
       cwd: tempRoot,
       encoding: "utf8",
       env: {
         ...process.env,
-        FAKE_STATUS_JSON: JSON.stringify({
-          routes: [
-            {
-              https_port: 4443,
-              live: true,
-              name: "other-project",
-              path: "/",
-              repo: "/tmp/other-project",
-              target: "http://127.0.0.1:9999",
-            },
-          ],
-        }),
+        FAKE_EXPOSE_EXIT: "1",
         HELPER_LOG: helperLog,
         EXPOSE_MARKER: exposeMarker,
         PORT: String(port),
@@ -195,9 +186,9 @@ process.on("SIGTERM", () => closeServer(143));
     });
 
     expect(result.status).toBe(1);
-    expect(result.stderr).toContain("refusing to replace https:4443 /");
-    expect(() => readFileSync(viteLog)).toThrow();
-    expect(readFileSync(helperLog, "utf8").trim().split("\n")).toHaveLength(1);
+    expect(result.stderr).toContain("Tailnet exposure failed; Vite will stop");
+    expect(() => readFileSync(viteLog)).not.toThrow();
+    expect(readFileSync(helperLog, "utf8").trim().split("\n")).toHaveLength(3);
   });
 
   it("rejects routing flags that could disagree with the registered target", async () => {
@@ -217,11 +208,11 @@ process.on("SIGTERM", () => closeServer(143));
     });
 
     expect(result.status).toBe(1);
-    expect(result.stderr).toContain("use HOST, PORT, or TAILNET_HTTPS_PORT");
+    expect(result.stderr).toContain("use HOST, PORT, or TAILNET_PATH");
     expect(() => readFileSync(helperLog)).toThrow();
   });
 
-  it("fails closed when the helper status payload has an unknown shape", async () => {
+  it("rejects a root Tailnet path before consulting the helper", async () => {
     const port = await freePort();
     const result = spawnSync("bash", [devTailnet], {
       cwd: tempRoot,
@@ -229,9 +220,9 @@ process.on("SIGTERM", () => closeServer(143));
       env: {
         ...process.env,
         EXPOSE_MARKER: exposeMarker,
-        FAKE_STATUS_JSON: '{"ok":true}',
         HELPER_LOG: helperLog,
         PORT: String(port),
+        TAILNET_PATH: "/",
         TAILNET_DEV_HOST_BIN: helperPath,
         VITE_BIN: vitePath,
         VITE_LOG: viteLog,
@@ -239,8 +230,9 @@ process.on("SIGTERM", () => closeServer(143));
     });
 
     expect(result.status).toBe(1);
-    expect(result.stderr).toContain("status omitted its routes array");
+    expect(result.stderr).toContain("TAILNET_PATH must be a non-root path");
     expect(() => readFileSync(viteLog)).toThrow();
+    expect(() => readFileSync(helperLog)).toThrow();
   });
 
   it("reports an offline helper without starting Vite", async () => {

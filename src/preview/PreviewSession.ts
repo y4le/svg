@@ -35,6 +35,22 @@ const TRUSTED_SHELL = `<!doctype html>
   <head>
     <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'none'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; connect-src 'none'; media-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
     <style>
+      html {
+        --preview-background: #11110f;
+        --preview-check: #171714;
+        background-color: var(--preview-background);
+        background-image:
+          linear-gradient(45deg, var(--preview-check) 25%, transparent 25%),
+          linear-gradient(-45deg, var(--preview-check) 25%, transparent 25%),
+          linear-gradient(45deg, transparent 75%, var(--preview-check) 75%),
+          linear-gradient(-45deg, transparent 75%, var(--preview-check) 75%);
+        background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+        background-size: 16px 16px;
+      }
+      html[data-document-theme="light"] {
+        --preview-background: #e8e3d5;
+        --preview-check: #ded8c9;
+      }
       html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; }
       body { display: grid; place-items: center; }
       body > svg { max-width: 100%; max-height: 100%; }
@@ -208,9 +224,12 @@ export class PreviewSession {
   }
 
   #applyColorScheme(): void {
+    const frameDocument = this.document;
     const root = this.root;
     const authored = this.#authoredColorScheme;
-    if (!root || !authored) return;
+    if (!frameDocument || !root || !authored) return;
+
+    frameDocument.documentElement.dataset.documentTheme = this.#colorScheme;
 
     if (authored.styleValue) {
       root.style.setProperty(

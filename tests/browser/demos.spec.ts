@@ -31,6 +31,16 @@ async function renderedMarkFill(page: Page): Promise<string | null> {
   });
 }
 
+async function renderedCanvasBackground(page: Page): Promise<string | null> {
+  return page.locator("iframe").evaluate((frame: HTMLIFrameElement) => {
+    const document = frame.contentDocument;
+    const window = frame.contentWindow;
+    return document && window
+      ? window.getComputedStyle(document.documentElement).backgroundColor
+      : null;
+  });
+}
+
 test("loads a clean byte-exact GitHub demo from its shortname URL", async ({
   page,
 }) => {
@@ -141,6 +151,10 @@ test("switches the rendered SVG theme without editing source and keeps it across
   const card = await readFile(CARD_PATH);
   await stubCard(page, card);
   await page.goto("/?demo=card");
+  await expect(
+    page.getByRole("button", { name: "Rename yalethomas-card.svg" }),
+  ).toBeVisible();
+  await expect.poll(() => renderedMarkFill(page)).not.toBeNull();
   await expect(page.getByTestId("document-status")).toHaveText("valid");
 
   const theme = page.getByLabel("Rendered SVG theme");
@@ -151,6 +165,9 @@ test("switches the rendered SVG theme without editing source and keeps it across
     "background-color",
     "rgb(232, 227, 213)",
   );
+  await expect
+    .poll(() => renderedCanvasBackground(page))
+    .toBe("rgb(232, 227, 213)");
   await expect
     .poll(() =>
       page.locator("iframe").evaluate((frame: HTMLIFrameElement) => {
@@ -180,6 +197,9 @@ test("switches the rendered SVG theme without editing source and keeps it across
     "background-color",
     "rgb(17, 17, 15)",
   );
+  await expect
+    .poll(() => renderedCanvasBackground(page))
+    .toBe("rgb(17, 17, 15)");
   expect(await page.locator(".cm-content").textContent()).toBe(sourceBefore);
   const [themedDownload] = await Promise.all([
     page.waitForEvent("download"),
